@@ -27,10 +27,10 @@ services:
       # ===========================================
       # Database Configuration
       # ===========================================
-      # For multi-instance sync, use PostgreSQL:
+      # For multi-instance sync, set DATABASE_URL in .env.aiden:
       # DATABASE_URL=postgresql://user:pass@host:5432/openwebui
-      # For single instance, leave unset (uses SQLite)
-      - 'DATABASE_URL=${DATABASE_URL:-}'
+      # For single instance (SQLite), don't set DATABASE_URL at all
+      # Note: Empty string causes errors, so we omit it entirely when not set
 
       # ===========================================
       # Authentication (CRITICAL for multi-instance)
