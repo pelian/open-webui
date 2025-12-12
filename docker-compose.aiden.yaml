@@ -1,0 +1,39 @@
+# docker-compose.aiden.yaml
+# Pelian Open WebUI deployment for Aiden integration
+# Uses host.docker.internal to connect to Aiden API and TTS Gateway
+
+services:
+  open-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - USE_SLIM=true  # Slim build without embedding models
+    image: pelian-open-webui:aiden
+    container_name: pelian-open-webui
+    volumes:
+      - pelian-webui-data:/app/backend/data
+    ports:
+      - "3000:8080"
+    environment:
+      # Connect to Aiden API on host (Ollama-compatible layer)
+      - 'OLLAMA_BASE_URL=http://host.docker.internal:8000'
+      # Disable SSL verification for HTTP connections (TTS Gateway)
+      - 'AIOHTTP_CLIENT_SESSION_SSL=false'
+      # CORS configuration
+      - 'CORS_ALLOW_ORIGIN=*'
+      # Telemetry off
+      - 'SCARF_NO_ANALYTICS=true'
+      - 'DO_NOT_TRACK=true'
+      - 'ANONYMIZED_TELEMETRY=false'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  pelian-webui-data: {}
