@@ -68,6 +68,7 @@ from open_webui.socket.main import (
     get_models_in_use,
 )
 from open_webui.routers import (
+    aiden,
     audio,
     images,
     ollama,
@@ -1398,6 +1399,9 @@ app.include_router(
     evaluations.router, prefix="/api/v1/evaluations", tags=["evaluations"]
 )
 app.include_router(utils.router, prefix="/api/v1/utils", tags=["utils"])
+
+# Aiden API Proxy (AIP-19: Jobs integration)
+app.include_router(aiden.router, prefix="/api/v1/aiden", tags=["aiden"])
 
 # SCIM 2.0 API for identity management
 if ENABLE_SCIM:
