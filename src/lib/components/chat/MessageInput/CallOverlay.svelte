@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { config, models, settings, showCallOverlay, TTSWorker } from '$lib/stores';
+	import { RTVIVoiceService, getRTVIService } from '$lib/services/rtvi';
 	import { onMount, tick, getContext, onDestroy, createEventDispatcher } from 'svelte';
 
 	const dispatch = createEventDispatcher();
@@ -46,6 +47,211 @@
 
 	let videoInputDevices = [];
 	let selectedVideoInputDeviceId = null;
+
+	// RTVI Voice Chat Mode
+	let rtviMode = false;
+	let rtviService: RTVIVoiceService | null = null;
+	let rtviConnected = false;
+	let rtviUserTranscript = "";
+	let rtviBotTranscript = "";
+	let rtviCurrentBotMessageId: string | null = null;
+
+	// ============================================================
+	// RTVI MODE FUNCTIONS
+	// ============================================================
+
+	/**
+	 * Check if RTVI mode is enabled in settings
+	 */
+	const isRTVIModeEnabled = (): boolean => {
+		return $settings?.audio?.rtvi?.enabled === true;
+	};
+
+	/**
+	 * Get RTVI server URL from settings
+	 */
+	const getRTVIServerUrl = (): string => {
+		return $settings?.audio?.rtvi?.serverUrl || "http://localhost:7860";
+	};
+
+	/**
+	 * Start RTVI voice chat session
+	 */
+	const startRTVISession = async () => {
+		console.log("[RTVI] Starting RTVI voice chat session...");
+		rtviMode = true;
+		rtviService = getRTVIService();
+
+		try {
+			await rtviService.connect(
+				{
+					serverUrl: getRTVIServerUrl(),
+					enableMic: true,
+					enableCam: false
+				},
+				{
+					onUserTranscript: handleRTVIUserTranscript,
+					onBotTranscript: handleRTVIBotTranscript,
+					onBotStartedSpeaking: handleRTVIBotStarted,
+					onBotStoppedSpeaking: handleRTVIBotStopped,
+					onUserStartedSpeaking: handleRTVIUserStarted,
+					onUserStoppedSpeaking: handleRTVIUserStopped,
+					onConnectionStateChange: handleRTVIConnectionState,
+					onError: handleRTVIError
+				}
+			);
+			rtviConnected = true;
+			console.log("[RTVI] Connected successfully");
+		} catch (error) {
+			console.error("[RTVI] Failed to connect:", error);
+			toast.error("Failed to connect to voice server");
+			rtviMode = false;
+		}
+	};
+
+	/**
+	 * Stop RTVI voice chat session
+	 */
+	const stopRTVISession = async () => {
+		console.log("[RTVI] Stopping RTVI session...");
+		if (rtviService) {
+			await rtviService.disconnect();
+			rtviService = null;
+		}
+		rtviConnected = false;
+		rtviMode = false;
+		rtviUserTranscript = "";
+		rtviBotTranscript = "";
+		rtviCurrentBotMessageId = null;
+	};
+
+	/**
+	 * Handle user transcript from RTVI
+	 */
+	const handleRTVIUserTranscript = async (text: string, final: boolean) => {
+		console.log("[RTVI] User transcript:", text, "final:", final);
+		rtviUserTranscript = text;
+		hasStartedSpeaking = true;
+		rmsLevel = 0.5; // Visual feedback
+
+		if (final && text.trim() !== "") {
+			// Submit to chat when user finishes speaking
+			console.log("[RTVI] Submitting user message to chat:", text);
+			hasStartedSpeaking = false;
+			rmsLevel = 0;
+			
+			// Use submitPrompt to add message to chat history
+			// The { _raw: true } flag tells Open WebUI not to send to LLM
+			// since RTVI server handles the LLM call
+			const _responses = await submitPrompt(text, { _raw: true, _rtvi: true });
+			console.log("[RTVI] Submit response:", _responses);
+		}
+	};
+
+	/**
+	 * Handle bot transcript from RTVI
+	 */
+	const handleRTVIBotTranscript = (text: string) => {
+		console.log("[RTVI] Bot transcript:", text);
+		rtviBotTranscript = text;
+		
+		// Update the chat message with bot response
+		// This will stream into the UI just like normal LLM responses
+		if (rtviCurrentBotMessageId) {
+			// Dispatch event to update message content
+			eventTarget.dispatchEvent(
+				new CustomEvent("chat", {
+					detail: {
+						id: rtviCurrentBotMessageId,
+						content: text
+					}
+				})
+			);
+		}
+	};
+
+	/**
+	 * Handle bot started speaking
+	 */
+	const handleRTVIBotStarted = () => {
+		console.log("[RTVI] Bot started speaking");
+		assistantSpeaking = true;
+		
+		// Create a new message ID for the bot response
+		rtviCurrentBotMessageId = "rtvi-" + Date.now().toString();
+		
+		// Dispatch chat start event
+		eventTarget.dispatchEvent(
+			new CustomEvent("chat:start", {
+				detail: { id: rtviCurrentBotMessageId }
+			})
+		);
+	};
+
+	/**
+	 * Handle bot stopped speaking
+	 */
+	const handleRTVIBotStopped = () => {
+		console.log("[RTVI] Bot stopped speaking");
+		assistantSpeaking = false;
+		
+		// Finalize the message
+		if (rtviCurrentBotMessageId && rtviBotTranscript) {
+			eventTarget.dispatchEvent(
+				new CustomEvent("chat:finish", {
+					detail: {
+						id: rtviCurrentBotMessageId,
+						content: rtviBotTranscript
+					}
+				})
+			);
+		}
+		
+		rtviBotTranscript = "";
+		rtviCurrentBotMessageId = null;
+	};
+
+	/**
+	 * Handle user started speaking
+	 */
+	const handleRTVIUserStarted = () => {
+		console.log("[RTVI] User started speaking");
+		hasStartedSpeaking = true;
+		rmsLevel = 0.3;
+	};
+
+	/**
+	 * Handle user stopped speaking
+	 */
+	const handleRTVIUserStopped = () => {
+		console.log("[RTVI] User stopped speaking");
+		// Do not reset hasStartedSpeaking here - wait for final transcript
+		rmsLevel = 0;
+	};
+
+	/**
+	 * Handle RTVI connection state changes
+	 */
+	const handleRTVIConnectionState = (state: string) => {
+		console.log("[RTVI] Connection state:", state);
+		if (state === "connected") {
+			rtviConnected = true;
+		} else if (state === "disconnected" || state === "failed") {
+			rtviConnected = false;
+		}
+	};
+
+	/**
+	 * Handle RTVI errors
+	 */
+	const handleRTVIError = (error: Error) => {
+		console.error("[RTVI] Error:", error);
+		toast.error("Voice chat error: " + error.message);
+	};
+
+	// ============================================================
+	// ORIGINAL FUNCTIONS (used when RTVI is disabled)
+	// ============================================================
 
 	const getVideoInputDevices = async () => {
 		const devices = await navigator.mediaDevices.enumerateDevices();
@@ -648,13 +854,25 @@
 
 		model = $models.find((m) => m.id === modelId);
 
-		startRecording();
+		// Check if RTVI mode should be used
+		if (isRTVIModeEnabled()) {
+			console.log("[CallOverlay] Starting in RTVI mode");
+			await startRTVISession();
+		} else {
+			console.log("[CallOverlay] Starting in legacy mode");
+			startRecording();
+		}
 
 		eventTarget.addEventListener('chat:start', chatStartHandler);
 		eventTarget.addEventListener('chat', chatEventHandler);
 		eventTarget.addEventListener('chat:finish', chatFinishHandler);
 
 		return async () => {
+			// Stop RTVI if active
+			if (rtviMode) {
+				await stopRTVISession();
+			}
+			
 			await stopAllAudio();
 
 			stopAudioStream();
@@ -674,6 +892,11 @@
 	});
 
 	onDestroy(async () => {
+		// Stop RTVI if active
+		if (rtviMode) {
+			await stopRTVISession();
+		}
+		
 		await stopAllAudio();
 		await stopRecordingCallback(false);
 		await stopCamera();

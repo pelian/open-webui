@@ -36,6 +36,10 @@
 	// Audio speed control
 	let playbackRate = 1;
 
+	// RTVI Voice Chat settings
+	let rtviEnabled = false;
+	let rtviServerUrl = "http://localhost:7860";
+
 	const getVoices = async () => {
 		if (TTSEngine === 'browser-kokoro') {
 			if (!TTSModel) {
@@ -84,6 +88,10 @@
 
 	onMount(async () => {
 		playbackRate = $settings.audio?.tts?.playbackRate ?? 1;
+
+		// RTVI settings
+		rtviEnabled = $settings?.audio?.rtvi?.enabled ?? false;
+		rtviServerUrl = $settings?.audio?.rtvi?.serverUrl ?? "http://localhost:7860";
 		conversationMode = $settings.conversationMode ?? false;
 		speechAutoSend = $settings.speechAutoSend ?? false;
 		responseAutoPlayback = $settings.responseAutoPlayback ?? false;
