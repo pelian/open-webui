@@ -7,7 +7,7 @@
 
 	import { blobToFile } from '$lib/utils';
 	import { generateEmoji } from '$lib/apis';
-	import { getAudioConfig, synthesizeOpenAISpeech, transcribeAudio } from '$lib/apis/audio';
+	import { getRTVIConfig, synthesizeOpenAISpeech, transcribeAudio } from '$lib/apis/audio';
 
 	import { toast } from 'svelte-sonner';
 
@@ -866,15 +866,15 @@
 
 		model = $models.find((m) => m.id === modelId);
 
-		// Fetch global RTVI config from admin settings
+		// Fetch global RTVI config from admin settings (public endpoint)
 		try {
-			const audioConfig = await getAudioConfig(localStorage.token);
-			if (audioConfig?.rtvi) {
-				globalRTVIConfig = audioConfig.rtvi;
+			const rtviConfig = await getRTVIConfig(localStorage.token);
+			if (rtviConfig) {
+				globalRTVIConfig = rtviConfig;
 				console.log("[CallOverlay] Global RTVI config:", globalRTVIConfig);
 			}
 		} catch (err) {
-			console.warn("[CallOverlay] Could not fetch global audio config:", err);
+			console.warn("[CallOverlay] Could not fetch RTVI config:", err);
 		}
 
 		// Check if RTVI mode should be used

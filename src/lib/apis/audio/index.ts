@@ -1,5 +1,36 @@
 import { AUDIO_API_BASE_URL } from '$lib/constants';
 
+/**
+ * Get RTVI configuration (admin defaults).
+ * This endpoint is accessible to all verified users.
+ */
+export const getRTVIConfig = async (token: string) => {
+	let error = null;
+
+	const res = await fetch(`${AUDIO_API_BASE_URL}/config/rtvi`, {
+		method: 'GET',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.error(err);
+			error = err.detail;
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
 export const getAudioConfig = async (token: string) => {
 	let error = null;
 

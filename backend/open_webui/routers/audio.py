@@ -196,6 +196,18 @@ class AudioConfigUpdateForm(BaseModel):
     stt: STTConfigForm
 
 
+@router.get("/config/rtvi")
+async def get_rtvi_config(request: Request, user=Depends(get_verified_user)):
+    """Get RTVI configuration (public endpoint for all verified users).
+
+    Returns admin-configured RTVI defaults that users can inherit.
+    """
+    return {
+        "ENABLED": request.app.state.config.AUDIO_RTVI_ENABLED,
+        "SERVER_URL": request.app.state.config.AUDIO_RTVI_SERVER_URL,
+    }
+
+
 @router.get("/config")
 async def get_audio_config(request: Request, user=Depends(get_admin_user)):
     return {
