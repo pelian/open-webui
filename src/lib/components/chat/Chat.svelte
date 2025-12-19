@@ -1650,7 +1650,75 @@
 
 		saveSessionSelectedModels();
 
-		await sendMessage(history, userMessageId, { newChat: true });
+		// If _raw is true, skip sending to LLM (e.g., for RTVI voice chat where external server handles LLM)
+		if (!_raw) {
+			await sendMessage(history, userMessageId, { newChat: true });
+		} else {
+			// For raw mode, just save the chat with user message (no LLM response)
+			let _chatId = JSON.parse(JSON.stringify($chatId));
+			let _history = JSON.parse(JSON.stringify(history));
+
+			// Create new chat if first message
+			if (_history.messages[_history.currentId].parentId === null) {
+				_chatId = await initChatHandler(_history);
+			}
+
+			await saveChatHandler(_chatId, _history);
+
+			// Return the userMessageId so caller can add responses
+			return { userMessageId, chatId: _chatId };
+		}
+	};
+
+	/**
+	 * Add an assistant message to history without LLM call.
+	 * Used by RTVI voice chat to add bot responses from external server.
+	 */
+	const addAssistantMessage = async (parentId: string, content: string, modelId?: string) => {
+		const model = modelId
+			? $models.filter((m) => m.id === modelId).at(0)
+			: $models.filter((m) => selectedModels.includes(m.id)).at(0);
+
+		if (!model) {
+			console.error('[addAssistantMessage] No model found');
+			return null;
+		}
+
+		const responseMessageId = uuidv4();
+		const responseMessage = {
+			parentId: parentId,
+			id: responseMessageId,
+			childrenIds: [],
+			role: 'assistant',
+			content: content,
+			model: model.id,
+			modelName: model.name ?? model.id,
+			modelIdx: 0,
+			timestamp: Math.floor(Date.now() / 1000),
+			done: true
+		};
+
+		// Add message to history
+		history.messages[responseMessageId] = responseMessage;
+		history.currentId = responseMessageId;
+
+		// Append to parent's children
+		if (parentId && history.messages[parentId]) {
+			history.messages[parentId].childrenIds = [
+				...history.messages[parentId].childrenIds,
+				responseMessageId
+			];
+		}
+
+		history = history;
+		await tick();
+
+		// Save chat
+		let _chatId = JSON.parse(JSON.stringify($chatId));
+		let _history = JSON.parse(JSON.stringify(history));
+		await saveChatHandler(_chatId, _history);
+
+		return { responseMessageId };
 	};
 
 	const sendMessage = async (
@@ -2618,6 +2686,7 @@
 						return a;
 					}, [])}
 					{submitPrompt}
+					{addAssistantMessage}
 					{stopResponse}
 					{showMessage}
 					{eventTarget}

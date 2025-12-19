@@ -29,6 +29,7 @@
 
 	export let eventTarget: EventTarget;
 	export let submitPrompt: Function;
+	export let addAssistantMessage: Function;
 	export let stopResponse: Function;
 	export let showMessage: Function;
 	export let files;
@@ -171,6 +172,7 @@
 						<CallOverlay
 							bind:files
 							{submitPrompt}
+							{addAssistantMessage}
 							{stopResponse}
 							{modelId}
 							{chatId}
@@ -261,6 +263,7 @@
 							<CallOverlay
 								bind:files
 								{submitPrompt}
+								{addAssistantMessage}
 								{stopResponse}
 								{modelId}
 								{chatId}

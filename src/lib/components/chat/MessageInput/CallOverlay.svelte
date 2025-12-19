@@ -20,6 +20,7 @@
 
 	export let eventTarget: EventTarget;
 	export let submitPrompt: Function;
+	export let addAssistantMessage: Function;
 	export let stopResponse: Function;
 	export let files;
 	export let chatId;
@@ -55,6 +56,8 @@
 	let rtviUserTranscript = "";
 	let rtviBotTranscript = "";
 	let rtviCurrentBotMessageId: string | null = null;
+	// Track the last user message ID for adding bot responses
+	let rtviLastUserMessageId: string | null = null;
 	// Global RTVI config from admin settings
 	let globalRTVIConfig: { ENABLED: boolean; SERVER_URL: string } | null = null;
 
@@ -135,6 +138,7 @@
 		rtviUserTranscript = "";
 		rtviBotTranscript = "";
 		rtviCurrentBotMessageId = null;
+		rtviLastUserMessageId = null;
 	};
 
 	/**
@@ -151,12 +155,18 @@
 			console.log("[RTVI] Submitting user message to chat:", text);
 			hasStartedSpeaking = false;
 			rmsLevel = 0;
-			
+
 			// Use submitPrompt to add message to chat history
 			// The { _raw: true } flag tells Open WebUI not to send to LLM
 			// since RTVI server handles the LLM call
-			const _responses = await submitPrompt(text, { _raw: true, _rtvi: true });
-			console.log("[RTVI] Submit response:", _responses);
+			const result = await submitPrompt(text, { _raw: true });
+			console.log("[RTVI] Submit response:", result);
+
+			// Save the user message ID so we can attach bot response to it
+			if (result && result.userMessageId) {
+				rtviLastUserMessageId = result.userMessageId;
+				console.log("[RTVI] Saved user message ID:", rtviLastUserMessageId);
+			}
 		}
 	};
 
@@ -203,11 +213,18 @@
 	/**
 	 * Handle bot stopped speaking
 	 */
-	const handleRTVIBotStopped = () => {
+	const handleRTVIBotStopped = async () => {
 		console.log("[RTVI] Bot stopped speaking");
 		assistantSpeaking = false;
-		
-		// Finalize the message
+
+		// Add the bot response to Open WebUI chat history
+		if (rtviLastUserMessageId && rtviBotTranscript) {
+			console.log("[RTVI] Adding bot response to chat history:", rtviBotTranscript.substring(0, 50) + "...");
+			const result = await addAssistantMessage(rtviLastUserMessageId, rtviBotTranscript);
+			console.log("[RTVI] Added assistant message:", result);
+		}
+
+		// Dispatch finish event for any other listeners
 		if (rtviCurrentBotMessageId && rtviBotTranscript) {
 			eventTarget.dispatchEvent(
 				new CustomEvent("chat:finish", {
@@ -218,7 +235,7 @@
 				})
 			);
 		}
-		
+
 		rtviBotTranscript = "";
 		rtviCurrentBotMessageId = null;
 	};
@@ -820,7 +837,10 @@
 
 				console.log(content);
 
-				fetchAudio(content);
+				// Skip legacy TTS in RTVI mode - audio comes via WebRTC
+				if (!rtviMode) {
+					fetchAudio(content);
+				}
 			} catch (error) {
 				console.error('Failed to fetch or play audio:', error);
 			}
@@ -877,19 +897,19 @@
 			console.warn("[CallOverlay] Could not fetch RTVI config:", err);
 		}
 
+		// Always add event listeners - they handle UI state (assistantSpeaking, etc.)
+		// The chatEventHandler will skip fetchAudio in RTVI mode
+		eventTarget.addEventListener('chat:start', chatStartHandler);
+		eventTarget.addEventListener('chat', chatEventHandler);
+		eventTarget.addEventListener('chat:finish', chatFinishHandler);
+
 		// Check if RTVI mode should be used
 		if (isRTVIModeEnabled()) {
 			console.log("[CallOverlay] Starting in RTVI mode");
 			await startRTVISession();
-			// Note: In RTVI mode, we don't add chat event handlers because
-			// RTVI handles its own TTS via WebRTC - no legacy TTS needed
 		} else {
 			console.log("[CallOverlay] Starting in legacy mode");
 			startRecording();
-			// Only add legacy TTS event handlers in non-RTVI mode
-			eventTarget.addEventListener('chat:start', chatStartHandler);
-			eventTarget.addEventListener('chat', chatEventHandler);
-			eventTarget.addEventListener('chat:finish', chatFinishHandler);
 		}
 
 		return async () => {
