@@ -248,6 +248,8 @@ export class RTVIVoiceService {
 
     this.dc.onopen = () => {
       console.log('[RTVI] Data channel open');
+      // Send client-ready message - required by Pipecat RTVI protocol
+      this.sendClientReady();
     };
 
     this.dc.onclose = () => {
@@ -320,6 +322,30 @@ export class RTVIVoiceService {
         }
         break;
     }
+  }
+
+
+  /**
+   * Send client-ready message to server.
+   * Required by Pipecat RTVI protocol to start processing.
+   */
+  private sendClientReady(): void {
+    if (!this.dc || this.dc.readyState !== "open") {
+      console.warn("[RTVI] Cannot send client-ready: data channel not open");
+      return;
+    }
+
+    const clientReadyMessage = {
+      label: "rtvi-ai",
+      type: "client-ready",
+      id: crypto.randomUUID().slice(0, 8),
+      data: {
+        version: "1.0.0",
+      },
+    };
+
+    this.dc.send(JSON.stringify(clientReadyMessage));
+    console.log("[RTVI] Sent client-ready message");
   }
 
   /**
