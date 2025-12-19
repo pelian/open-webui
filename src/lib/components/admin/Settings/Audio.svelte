@@ -56,7 +56,7 @@
 	let STT_MISTRAL_USE_CHAT_COMPLETIONS = false;
 
 	// RTVI (Real-Time Voice Interface)
-	let RTVI_ENABLED = false;
+	let RTVI_ENABLED = true;
 	let RTVI_SERVER_URL = 'http://localhost:7860';
 
 	let STT_WHISPER_MODEL_LOADING = false;
@@ -204,10 +204,9 @@
 			STT_MISTRAL_USE_CHAT_COMPLETIONS = res.stt.MISTRAL_USE_CHAT_COMPLETIONS;
 
 			// RTVI settings
-			if (res.rtvi) {
-				RTVI_ENABLED = res.rtvi.ENABLED ?? false;
-				RTVI_SERVER_URL = res.rtvi.SERVER_URL ?? 'http://localhost:7860';
-			}
+			RTVI_ENABLED = res.rtvi.ENABLED;
+			RTVI_SERVER_URL = res.rtvi.SERVER_URL;
+			
 		}
 
 		await getVoices();
