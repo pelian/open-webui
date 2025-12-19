@@ -166,6 +166,7 @@
 	on:submit|preventDefault={async () => {
 		saveSettings({
 			audio: {
+				...$settings.audio,
 				stt: {
 					engine: STTEngine !== '' ? STTEngine : undefined,
 					language: STTLanguage !== '' ? STTLanguage : undefined

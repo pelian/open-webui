@@ -219,6 +219,7 @@ type ModelOptions = {
 };
 
 type AudioSettings = {
+	rtvi?: { enabled?: boolean; serverUrl?: string };
 	stt: any;
 	tts: any;
 	STTEngine?: string;
