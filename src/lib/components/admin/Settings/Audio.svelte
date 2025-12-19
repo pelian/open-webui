@@ -11,7 +11,8 @@
 		getVoices as _getVoices
 	} from '$lib/apis/audio';
 	import { config, settings } from '$lib/stores';
-
+	
+	import Switch from '$lib/components/common/Switch.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 
@@ -56,7 +57,7 @@
 
 	// RTVI (Real-Time Voice Interface)
 	let RTVI_ENABLED = false;
-	let RTVI_SERVER_URL = "http://localhost:7860";
+	let RTVI_SERVER_URL = 'http://localhost:7860';
 
 	let STT_WHISPER_MODEL_LOADING = false;
 
@@ -204,8 +205,8 @@
 
 			// RTVI settings
 			if (res.rtvi) {
-				RTVI_ENABLED = res.rtvi.ENABLED;
-				RTVI_SERVER_URL = res.rtvi.SERVER_URL;
+				RTVI_ENABLED = res.rtvi.ENABLED ?? false;
+				RTVI_SERVER_URL = res.rtvi.SERVER_URL ?? 'http://localhost:7860';
 			}
 		}
 
@@ -511,47 +512,30 @@
 				{/if}
 			</div>
 
+			<div class="mb-2.5 flex w-full items-center justify-between">
+				<div class=" self-center text-xs font-medium">
+					{$i18n.t('Enable RTVI WebRTC')}
+				</div>
+			
+				<Switch bind:state={RTVI_ENABLED} />
+			</div>
 
-			<div>
-				<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('RTVI Voice Chat')}</div>
-
-				<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
-
-				<div class="mb-2 py-0.5 flex w-full justify-between">
-					<div class=" self-center text-xs font-medium">{$i18n.t('Enable RTVI WebRTC')}</div>
-					<div class="flex items-center relative">
-						<button
-							class="p-1 px-3 text-xs flex rounded-sm transition {RTVI_ENABLED
-								? 'bg-emerald-600 text-white'
-								: 'text-gray-500 bg-gray-200 dark:text-gray-400 dark:bg-gray-900'}"
-							on:click={() => {
-								RTVI_ENABLED = !RTVI_ENABLED;
-							}}
-							type="button"
-						>
-							{RTVI_ENABLED ? $i18n.t('Enabled') : $i18n.t('Disabled')}
-						</button>
+			{#if RTVI_ENABLED}
+				<div class="mb-2">
+					<div class=" mb-1.5 text-xs font-medium">{$i18n.t('RTVI Server URL')}</div>
+					<div class="flex w-full">
+						<div class="flex-1">
+							<input
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								bind:value={RTVI_SERVER_URL}
+								placeholder={$i18n.t('http://localhost:7860')}
+							/>
+						</div>
 					</div>
 				</div>
+			{/if}
 
-				{#if RTVI_ENABLED}
-					<div class="mt-2">
-						<div class=" mb-1.5 text-xs font-medium">{$i18n.t('RTVI Server URL')}</div>
-						<div class="flex w-full">
-							<div class="flex-1">
-								<input
-									class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-									bind:value={RTVI_SERVER_URL}
-									placeholder="http://localhost:7860"
-								/>
-							</div>
-						</div>
-						<div class="mt-1 text-xs text-gray-500">
-							{$i18n.t('WebRTC server URL for real-time voice chat')}
-						</div>
-					</div>
-				{/if}
-			</div>
+
 			<div>
 				<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Text-to-Speech')}</div>
 
