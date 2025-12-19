@@ -881,14 +881,16 @@
 		if (isRTVIModeEnabled()) {
 			console.log("[CallOverlay] Starting in RTVI mode");
 			await startRTVISession();
+			// Note: In RTVI mode, we don't add chat event handlers because
+			// RTVI handles its own TTS via WebRTC - no legacy TTS needed
 		} else {
 			console.log("[CallOverlay] Starting in legacy mode");
 			startRecording();
+			// Only add legacy TTS event handlers in non-RTVI mode
+			eventTarget.addEventListener('chat:start', chatStartHandler);
+			eventTarget.addEventListener('chat', chatEventHandler);
+			eventTarget.addEventListener('chat:finish', chatFinishHandler);
 		}
-
-		eventTarget.addEventListener('chat:start', chatStartHandler);
-		eventTarget.addEventListener('chat', chatEventHandler);
-		eventTarget.addEventListener('chat:finish', chatFinishHandler);
 
 		return async () => {
 			// Stop RTVI if active
