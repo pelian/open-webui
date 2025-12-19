@@ -278,6 +278,10 @@ async def update_user_settings_by_session_user(
     request: Request, form_data: UserSettings, user=Depends(get_verified_user)
 ):
     updated_user_settings = form_data.model_dump()
+    import json
+    print(f"[DEBUG] Received settings update: {json.dumps(updated_user_settings, indent=2)[:1000]}")
+    if "ui" in updated_user_settings and "audio" in updated_user_settings.get("ui", {}):
+        print(f"[DEBUG] Audio settings: {json.dumps(updated_user_settings[ui][audio], indent=2)}")
     if (
         user.role != "admin"
         and "toolServers" in updated_user_settings.get("ui").keys()
