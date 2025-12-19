@@ -3774,6 +3774,23 @@ AUDIO_TTS_AZURE_SPEECH_OUTPUT_FORMAT = PersistentConfig(
 
 
 ####################################
+# RTVI (Real-Time Voice Interface)
+####################################
+
+AUDIO_RTVI_ENABLED = PersistentConfig(
+    "AUDIO_RTVI_ENABLED",
+    "audio.rtvi.enabled",
+    os.getenv("AUDIO_RTVI_ENABLED", "false").lower() == "true",
+)
+
+AUDIO_RTVI_SERVER_URL = PersistentConfig(
+    "AUDIO_RTVI_SERVER_URL",
+    "audio.rtvi.server_url",
+    os.getenv("AUDIO_RTVI_SERVER_URL", "http://localhost:7860"),
+)
+
+
+####################################
 # LDAP
 ####################################
 

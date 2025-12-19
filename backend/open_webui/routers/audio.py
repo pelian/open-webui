@@ -185,7 +185,13 @@ class STTConfigForm(BaseModel):
     MISTRAL_USE_CHAT_COMPLETIONS: bool
 
 
+
+class RTVIConfigForm(BaseModel):
+    ENABLED: bool
+    SERVER_URL: str
+
 class AudioConfigUpdateForm(BaseModel):
+    rtvi: Optional[RTVIConfigForm] = None
     tts: TTSConfigForm
     stt: STTConfigForm
 
@@ -222,6 +228,10 @@ async def get_audio_config(request: Request, user=Depends(get_admin_user)):
             "MISTRAL_API_KEY": request.app.state.config.AUDIO_STT_MISTRAL_API_KEY,
             "MISTRAL_API_BASE_URL": request.app.state.config.AUDIO_STT_MISTRAL_API_BASE_URL,
             "MISTRAL_USE_CHAT_COMPLETIONS": request.app.state.config.AUDIO_STT_MISTRAL_USE_CHAT_COMPLETIONS,
+        },
+        "rtvi": {
+            "ENABLED": request.app.state.config.AUDIO_RTVI_ENABLED,
+            "SERVER_URL": request.app.state.config.AUDIO_RTVI_SERVER_URL,
         },
     }
 
@@ -271,6 +281,11 @@ async def update_audio_config(
         form_data.stt.MISTRAL_USE_CHAT_COMPLETIONS
     )
 
+    # RTVI settings
+    if form_data.rtvi:
+        request.app.state.config.AUDIO_RTVI_ENABLED = form_data.rtvi.ENABLED
+        request.app.state.config.AUDIO_RTVI_SERVER_URL = form_data.rtvi.SERVER_URL
+
     if request.app.state.config.STT_ENGINE == "":
         request.app.state.faster_whisper_model = set_faster_whisper_model(
             form_data.stt.WHISPER_MODEL, WHISPER_MODEL_AUTO_UPDATE
@@ -309,6 +324,10 @@ async def update_audio_config(
             "MISTRAL_API_BASE_URL": request.app.state.config.AUDIO_STT_MISTRAL_API_BASE_URL,
             "MISTRAL_USE_CHAT_COMPLETIONS": request.app.state.config.AUDIO_STT_MISTRAL_USE_CHAT_COMPLETIONS,
         },
+        "rtvi": {
+            "ENABLED": request.app.state.config.AUDIO_RTVI_ENABLED,
+            "SERVER_URL": request.app.state.config.AUDIO_RTVI_SERVER_URL,
+        },
     }
 
 
@@ -327,11 +346,47 @@ def load_speech_pipeline(request):
         )
 
 
+# Model-to-voice routing for persona-aware TTS (AIP-31)
+# Maps LLM model name patterns to TTS voice IDs
+MODEL_VOICE_ROUTING = {
+    "lumi": "lumi",    # Lumi model → Lumi voice (feminine)
+    "aiden": "aiden",  # Aiden model → Aiden voice (masculine)
+}
+
+
+def route_voice_by_model(payload: dict) -> str:
+    """Route TTS voice based on LLM model name in payload."""
+    llm_model = payload.get("model", "").lower()
+    original_voice = payload.get("voice", "")
+
+    for pattern, voice_id in MODEL_VOICE_ROUTING.items():
+        if pattern in llm_model:
+            log.info(f"TTS voice routing: LLM model '{llm_model}' -> voice '{voice_id}'")
+            return voice_id
+
+    return original_voice  # Keep original voice if no model match
+
+
 @router.post("/speech")
 async def speech(request: Request, user=Depends(get_verified_user)):
     body = await request.body()
+
+    # Parse payload first to enable model-based voice routing
+    payload = None
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except Exception as e:
+        log.exception(e)
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    # Route voice based on LLM model name (AIP-31: persona-aware TTS)
+    routed_voice = route_voice_by_model(payload)
+    if routed_voice:
+        payload["voice"] = routed_voice
+
+    # Include routed voice in cache key to separate persona-specific audio
     name = hashlib.sha256(
-        body
+        json.dumps(payload, sort_keys=True).encode("utf-8")
         + str(request.app.state.config.TTS_ENGINE).encode("utf-8")
         + str(request.app.state.config.TTS_MODEL).encode("utf-8")
     ).hexdigest()
@@ -342,13 +397,6 @@ async def speech(request: Request, user=Depends(get_verified_user)):
     # Check if the file already exists in the cache
     if file_path.is_file():
         return FileResponse(file_path)
-
-    payload = None
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except Exception as e:
-        log.exception(e)
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     r = None
     if request.app.state.config.TTS_ENGINE == "openai":

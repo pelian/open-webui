@@ -7,7 +7,7 @@
 
 	import { blobToFile } from '$lib/utils';
 	import { generateEmoji } from '$lib/apis';
-	import { synthesizeOpenAISpeech, transcribeAudio } from '$lib/apis/audio';
+	import { getAudioConfig, synthesizeOpenAISpeech, transcribeAudio } from '$lib/apis/audio';
 
 	import { toast } from 'svelte-sonner';
 
@@ -55,6 +55,8 @@
 	let rtviUserTranscript = "";
 	let rtviBotTranscript = "";
 	let rtviCurrentBotMessageId: string | null = null;
+	// Global RTVI config from admin settings
+	let globalRTVIConfig: { ENABLED: boolean; SERVER_URL: string } | null = null;
 
 	// ============================================================
 	// RTVI MODE FUNCTIONS
@@ -64,6 +66,11 @@
 	 * Check if RTVI mode is enabled in settings
 	 */
 	const isRTVIModeEnabled = (): boolean => {
+		// Check global admin config first (takes precedence)
+		if (globalRTVIConfig !== null) {
+			return globalRTVIConfig.ENABLED === true;
+		}
+		// Fall back to user settings
 		return $settings?.audio?.rtvi?.enabled === true;
 	};
 
@@ -71,6 +78,11 @@
 	 * Get RTVI server URL from settings
 	 */
 	const getRTVIServerUrl = (): string => {
+		// Use global admin config if available
+		if (globalRTVIConfig !== null && globalRTVIConfig.SERVER_URL) {
+			return globalRTVIConfig.SERVER_URL;
+		}
+		// Fall back to user settings
 		return $settings?.audio?.rtvi?.serverUrl || "http://localhost:7860";
 	};
 
@@ -853,6 +865,17 @@
 		}
 
 		model = $models.find((m) => m.id === modelId);
+
+		// Fetch global RTVI config from admin settings
+		try {
+			const audioConfig = await getAudioConfig(localStorage.token);
+			if (audioConfig?.rtvi) {
+				globalRTVIConfig = audioConfig.rtvi;
+				console.log("[CallOverlay] Global RTVI config:", globalRTVIConfig);
+			}
+		} catch (err) {
+			console.warn("[CallOverlay] Could not fetch global audio config:", err);
+		}
 
 		// Check if RTVI mode should be used
 		if (isRTVIModeEnabled()) {
