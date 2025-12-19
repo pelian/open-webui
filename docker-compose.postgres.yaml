@@ -1,0 +1,27 @@
+# PostgreSQL for Open WebUI persistence
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pelian-postgres
+    environment:
+      - POSTGRES_USER=openwebui
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=openwebui
+    volumes:
+      - pelian-postgres-data:/var/lib/postgresql/data
+    networks:
+      - pelian-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openwebui -d openwebui"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  pelian-net:
+    driver: bridge
+
+volumes:
+  pelian-postgres-data:

@@ -519,9 +519,10 @@
 
 	const saveSettings = async (updated) => {
 		console.log(updated);
-		await settings.set({ ...$settings, ...updated });
+		const mergedSettings = { ...$settings, ...updated };
+		await settings.set(mergedSettings);
 		await models.set(await getModels());
-		await updateUserSettings(localStorage.token, { ui: $settings });
+		await updateUserSettings(localStorage.token, { ui: mergedSettings });
 	};
 
 	const getModels = async () => {

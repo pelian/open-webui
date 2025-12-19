@@ -1,14 +1,5 @@
 # docker-compose.aiden.yaml
 # Pelian Open WebUI deployment for Aiden integration
-#
-# Multi-environment deployment:
-# - Development: Use .env.local for local overrides
-# - Production: Set DATABASE_URL and WEBUI_SECRET_KEY via environment
-#
-# Required Aiden services:
-# - GITS Gateway (port 8080) - LLM inference routing
-# - Aiden API (port 8000) - Jobs backend
-# - TTS Gateway (port 8800) - Text-to-speech (configured in UI)
 
 services:
   open-webui:
@@ -16,62 +7,31 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - USE_SLIM=true  # Slim build without embedding models
+        - USE_SLIM=true
     image: pelian-open-webui:aiden
     container_name: pelian-open-webui
+    env_file:
+      - .env.aiden
     volumes:
       - pelian-webui-data:/app/backend/data
     ports:
       - "${WEBUI_PORT:-3000}:8080"
     environment:
-      # ===========================================
-      # Database Configuration
-      # ===========================================
-      # For multi-instance sync, set DATABASE_URL in .env.aiden:
-      # DATABASE_URL=postgresql://user:pass@host:5432/openwebui
-      # For single instance (SQLite), don't set DATABASE_URL at all
-      # Note: Empty string causes errors, so we omit it entirely when not set
-
-      # ===========================================
-      # Authentication (CRITICAL for multi-instance)
-      # ===========================================
-      # MUST be the same across all instances for session sharing
-      - 'WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-pelian-aiden-secret-change-me}'
-
-      # ===========================================
-      # Aiden Service Endpoints
-      # ===========================================
-      # GITS Gateway - Cascading LLM inference router
-      - 'OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:8080}'
-
-      # Jobs API - Aiden job management backend (used by frontend Jobs panel)
-      - 'AIDEN_API_BASE_URL=${AIDEN_API_BASE_URL:-http://host.docker.internal:8000}'
-
-      # ===========================================
-      # Feature Flags
-      # ===========================================
-      - 'ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}'
-      - 'ENABLE_ADMIN_EXPORT=true'
-
-      # ===========================================
-      # Network & Security
-      # ===========================================
-      - 'AIOHTTP_CLIENT_SESSION_SSL=false'
-      - 'CORS_ALLOW_ORIGIN=*'
-      - 'FORWARDED_ALLOW_IPS=*'
-
-      # ===========================================
-      # Telemetry (disabled)
-      # ===========================================
-      - 'SCARF_NO_ANALYTICS=true'
-      - 'DO_NOT_TRACK=true'
-      - 'ANONYMIZED_TELEMETRY=false'
-
+      - "WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-pelian-aiden-secret-change-me}"
+      - "OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:8080}"
+      - "AIDEN_API_BASE_URL=${AIDEN_API_BASE_URL:-http://host.docker.internal:8000}"
+      - "ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}"
+      - "ENABLE_ADMIN_EXPORT=true"
+      - "AIOHTTP_CLIENT_SESSION_SSL=false"
+      - "CORS_ALLOW_ORIGIN=*"
+      - "FORWARDED_ALLOW_IPS=*"
+      - "SCARF_NO_ANALYTICS=true"
+      - "DO_NOT_TRACK=true"
+      - "ANONYMIZED_TELEMETRY=false"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-      # Add DGX Spark hosts if not in DNS
-      - "spark-99b5:${SPARK_99B5_IP:-192.168.1.100}"
-      - "spark-d97b:${SPARK_D97B_IP:-192.168.1.101}"
+    networks:
+      - pelian-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -79,7 +39,10 @@ services:
       timeout: 10s
       retries: 3
 
+networks:
+  pelian-net:
+    external: true
+    name: pelian-open-webui_pelian-net
+
 volumes:
   pelian-webui-data:
-    # Named volume persists data across container restarts
-    # For multi-instance, use DATABASE_URL instead of local volume

@@ -304,7 +304,8 @@
 						$settings?.audio?.tts?.defaultVoice === $config.audio.tts.voice
 							? ($settings?.audio?.tts?.voice ?? $config?.audio?.tts?.voice)
 							: $config?.audio?.tts?.voice,
-						sentence
+						sentence,
+						message.model  // Pass LLM model for persona-aware voice routing
 					).catch((error) => {
 						console.error(error);
 						toast.error(`${error}`);
