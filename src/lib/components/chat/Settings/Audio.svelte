@@ -87,11 +87,16 @@
 	};
 
 	onMount(async () => {
+		console.log("[Audio.svelte] onMount - $settings:", $settings);
+		console.log("[Audio.svelte] onMount - $settings.audio:", $settings?.audio);
+		console.log("[Audio.svelte] onMount - $settings.audio.rtvi:", $settings?.audio?.rtvi);
+		
 		playbackRate = $settings.audio?.tts?.playbackRate ?? 1;
 
 		// RTVI settings
 		rtviEnabled = $settings?.audio?.rtvi?.enabled ?? false;
 		rtviServerUrl = $settings?.audio?.rtvi?.serverUrl ?? "http://localhost:7860";
+		console.log("[Audio.svelte] rtviEnabled set to:", rtviEnabled);
 		conversationMode = $settings.conversationMode ?? false;
 		speechAutoSend = $settings.speechAutoSend ?? false;
 		responseAutoPlayback = $settings.responseAutoPlayback ?? false;
