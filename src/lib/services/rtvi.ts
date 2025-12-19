@@ -93,13 +93,32 @@ export class RTVIVoiceService {
     this.accumulatedBotText = '';
 
     try {
-      // 1. Create session via /start endpoint
-      console.log('[RTVI] Creating session...');
-      const startResponse = await fetch(`${this.serverUrl}/start`, {
+      // OPTIMIZATION: Start getUserMedia and session creation in parallel
+      // This reduces connection latency by ~200-500ms since getUserMedia
+      // can take time (especially if permission dialog is shown)
+      console.log('[RTVI] Starting parallel initialization...');
+      const startTime = performance.now();
+
+      // 1. Start both operations in parallel
+      const sessionPromise = fetch(`${this.serverUrl}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enableDefaultIceServers: true })
       });
+
+      const mediaPromise = config.enableMic !== false
+        ? navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            },
+            video: config.enableCam || false
+          })
+        : Promise.resolve(null);
+
+      // 2. Wait for both to complete
+      const [startResponse, localStream] = await Promise.all([sessionPromise, mediaPromise]);
 
       if (!startResponse.ok) {
         throw new Error(`Failed to create session: ${startResponse.status}`);
@@ -107,29 +126,21 @@ export class RTVIVoiceService {
 
       const { sessionId, iceConfig } = await startResponse.json();
       this.sessionId = sessionId;
-      console.log('[RTVI] Session created:', sessionId);
+      this.localStream = localStream;
 
-      // 2. Create PeerConnection with ICE servers
+      const initTime = performance.now() - startTime;
+      console.log(`[RTVI] Parallel init completed in ${initTime.toFixed(0)}ms - session: ${sessionId}`);
+
+      // 3. Create PeerConnection with ICE servers
       const iceServers = iceConfig?.iceServers || [
         { urls: 'stun:stun.l.google.com:19302' }
       ];
-      
+
       this.pc = new RTCPeerConnection({ iceServers });
       this.setupPeerConnectionHandlers();
 
-      // 3. Get local audio stream
-      if (config.enableMic !== false) {
-        console.log('[RTVI] Requesting microphone access...');
-        this.localStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          },
-          video: config.enableCam || false
-        });
-
-        // Add tracks to peer connection and verify
+      // 4. Add audio tracks if we have a stream
+      if (this.localStream) {
         const audioTracks = this.localStream.getAudioTracks();
         console.log('[RTVI] Got audio tracks:', audioTracks.length, audioTracks.map(t => ({
           id: t.id,
@@ -146,12 +157,12 @@ export class RTVIVoiceService {
         console.log('[RTVI] Local audio track added, transceivers:', this.pc!.getTransceivers().length);
       }
 
-      // 4. Create and send offer
+      // 5. Create and send offer
       console.log('[RTVI] Creating WebRTC offer...');
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
 
-      // 5. Send offer to server and get answer
+      // 6. Send offer to server and get answer
       const offerResponse = await fetch(
         `${this.serverUrl}/sessions/${sessionId}/api/offer`,
         {
@@ -171,7 +182,7 @@ export class RTVIVoiceService {
       const answer = await offerResponse.json();
       console.log('[RTVI] Received answer, pc_id:', answer.pc_id);
 
-      // 6. Set remote description
+      // 7. Set remote description
       await this.pc.setRemoteDescription(new RTCSessionDescription({
         type: answer.type,
         sdp: answer.sdp
@@ -190,7 +201,8 @@ export class RTVIVoiceService {
 
       this._connected = true;
       this.callbacks.onConnectionStateChange?.('connected');
-      console.log('[RTVI] WebRTC connection established');
+      const totalTime = performance.now() - startTime;
+      console.log(`[RTVI] WebRTC connection established in ${totalTime.toFixed(0)}ms total`);
 
     } catch (error) {
       console.error('[RTVI] Connection error:', error);
