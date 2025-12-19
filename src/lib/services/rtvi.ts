@@ -335,11 +335,17 @@ export class RTVIVoiceService {
 
       case 'bot-started-speaking':
       case 'bot-tts-started':
+        // Mute mic while bot speaks to prevent echo feedback loop
+        this.setMicMuted(true);
+        console.log('[RTVI] Bot speaking - mic muted to prevent echo');
         this.callbacks.onBotStartedSpeaking?.();
         break;
 
       case 'bot-stopped-speaking':
       case 'bot-tts-stopped':
+        // Unmute mic when bot stops speaking
+        this.setMicMuted(false);
+        console.log('[RTVI] Bot stopped - mic unmuted');
         this.callbacks.onBotStoppedSpeaking?.();
         break;
 
