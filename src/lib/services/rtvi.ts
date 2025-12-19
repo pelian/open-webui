@@ -218,9 +218,17 @@ export class RTVIVoiceService {
       }
     };
 
-    // Handle data channel from server
+    // Create data channel (client creates, server receives)
+    // Must be created BEFORE createOffer() to be included in SDP
+    console.log('[RTVI] Creating data channel...');
+    this.dc = this.pc.createDataChannel('rtvi', { ordered: true });
+    this.setupDataChannelHandlers();
+    console.log('[RTVI] Data channel created');
+
+    // Also handle data channel from server (in case server creates one)
     this.pc.ondatachannel = (event) => {
-      console.log('[RTVI] Data channel received:', event.channel.label);
+      console.log('[RTVI] Received data channel from server:', event.channel.label);
+      // Use server's channel if we receive one
       this.dc = event.channel;
       this.setupDataChannelHandlers();
     };
