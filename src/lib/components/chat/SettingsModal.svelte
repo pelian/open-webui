@@ -518,7 +518,8 @@
 	};
 
 	const saveSettings = async (updated) => {
-		console.log(updated);
+		console.log("saveSettings updated:", updated);
+		console.log("Current $settings:", $settings);
 		const mergedSettings = { ...$settings, ...updated };
 		await settings.set(mergedSettings);
 		await models.set(await getModels());

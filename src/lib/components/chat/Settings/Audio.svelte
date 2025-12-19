@@ -188,20 +188,22 @@
 		dispatch('save');
 	}}
 >
-	<div class=" space-y-3 overflow-y-scroll max-h-[28rem] md:max-h-full">
+		<div class=" space-y-3 overflow-y-scroll max-h-[28rem] md:max-h-full">
 		<!-- RTVI Voice Chat Settings -->
 		<div>
 			<div class=" mb-1 text-sm font-medium">{$i18n.t("RTVI Voice Chat")}</div>
 
-			<div class=" py-0.5 flex w-full justify-between">
-				<div class=" self-center text-xs font-medium">{$i18n.t("Enable WebRTC Voice Chat")}</div>
+			<div class="  mb-2.5 flex w-full justify-between">
+				<div class=" self-center text-xs font-medium">
+					{$i18n.t("Enable WebRTC Voice Chat")}
+				</div>
 				<div class="flex items-center relative">
 					<Switch bind:state={rtviEnabled} />
 				</div>
 			</div>
 
 			{#if rtviEnabled}
-				<div class=" py-0.5 flex w-full justify-between">
+				<div class="  mb-2.5 flex w-full justify-between">
 					<div class=" self-center text-xs font-medium">{$i18n.t("Server URL")}</div>
 					<div class="flex items-center relative">
 						<input
