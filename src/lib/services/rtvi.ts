@@ -82,6 +82,12 @@ export class RTVIVoiceService {
    * Connect to the RTVI server and establish WebRTC connection.
    */
   async connect(config: RTVIConfig, callbacks: RTVICallbacks = {}): Promise<void> {
+    // Always cleanup previous connection before starting a new one
+    if (this._connected || this.pc) {
+      console.log('[RTVI] Cleaning up previous connection before reconnecting...');
+      await this.disconnect();
+    }
+
     this.serverUrl = config.serverUrl;
     this.callbacks = callbacks;
     this.accumulatedBotText = '';
@@ -123,11 +129,21 @@ export class RTVIVoiceService {
           video: config.enableCam || false
         });
 
-        // Add tracks to peer connection
+        // Add tracks to peer connection and verify
+        const audioTracks = this.localStream.getAudioTracks();
+        console.log('[RTVI] Got audio tracks:', audioTracks.length, audioTracks.map(t => ({
+          id: t.id,
+          label: t.label,
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState
+        })));
+
         this.localStream.getTracks().forEach(track => {
-          this.pc!.addTrack(track, this.localStream!);
+          const sender = this.pc!.addTrack(track, this.localStream!);
+          console.log('[RTVI] Added track to PC:', track.kind, track.id, 'sender:', sender?.track?.id);
         });
-        console.log('[RTVI] Local audio track added');
+        console.log('[RTVI] Local audio track added, transceivers:', this.pc!.getTransceivers().length);
       }
 
       // 4. Create and send offer
@@ -160,6 +176,17 @@ export class RTVIVoiceService {
         type: answer.type,
         sdp: answer.sdp
       }));
+
+      // Log connection state details
+      console.log('[RTVI] Remote description set, checking state...');
+      console.log('[RTVI] ICE connection state:', this.pc.iceConnectionState);
+      console.log('[RTVI] Connection state:', this.pc.connectionState);
+      console.log('[RTVI] Signaling state:', this.pc.signalingState);
+      console.log('[RTVI] Senders:', this.pc.getSenders().map(s => ({
+        track: s.track?.kind,
+        trackId: s.track?.id,
+        trackEnabled: s.track?.enabled
+      })));
 
       this._connected = true;
       this.callbacks.onConnectionStateChange?.('connected');
