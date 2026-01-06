@@ -14,7 +14,13 @@ export const IMAGES_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1/images`;
 export const RETRIEVAL_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1/retrieval`;
 
 // Aiden API Base URL (AIP-19: Jobs integration)
-export const AIDEN_API_BASE_URL = browser ? (dev ? `http://localhost:8000` : `http://localhost:8000`) : `http://localhost:8000`;
+// In development: localhost:8500
+// In production: https://aiden.neko-trench.ts.net:8500 (Tailscale Serve)
+export const AIDEN_API_BASE_URL = browser
+	? dev
+		? `http://localhost:8500`
+		: `https://aiden.neko-trench.ts.net:8500`
+	: `https://aiden.neko-trench.ts.net:8500`;
 
 export const WEBUI_VERSION = APP_VERSION;
 export const WEBUI_BUILD_HASH = APP_BUILD_HASH;
