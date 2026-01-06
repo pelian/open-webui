@@ -8,6 +8,22 @@ services:
     restart: unless-stopped
     image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: pelian-postgres
+    volumes:
+      - pelian-postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=openwebui
+      - POSTGRES_PASSWORD=
+      - POSTGRES_DB=openwebui
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openwebui -d openwebui"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   open-webui:
     build:
       context: .
@@ -17,12 +33,16 @@ services:
     volumes:
       - open-webui:/app/backend/data
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     ports:
       - ${OPEN_WEBUI_PORT-3000}:8080
     environment:
       - 'OLLAMA_BASE_URL=http://ollama:11434'
       - 'WEBUI_SECRET_KEY='
+      - 'DATABASE_URL=postgresql://openwebui:@postgres:5432/openwebui'
     extra_hosts:
       - host.docker.internal:host-gateway
     restart: unless-stopped
@@ -30,3 +50,4 @@ services:
 volumes:
   ollama: {}
   open-webui: {}
+  pelian-postgres-data: {}
