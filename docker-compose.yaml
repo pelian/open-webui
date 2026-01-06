@@ -50,4 +50,6 @@ services:
 volumes:
   ollama: {}
   open-webui: {}
-  pelian-postgres-data: {}
+  pelian-postgres-data:
+    external: true
+    name: pelian-open-webui_pelian-postgres-data
