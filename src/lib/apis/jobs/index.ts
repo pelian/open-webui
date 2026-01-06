@@ -234,7 +234,7 @@ export async function updateJob(
 }
 
 /**
- * Cancel a job
+ * Cancel a job (marks as cancelled but keeps in history)
  */
 export async function cancelJob(token: string, jobId: string): Promise<void> {
 	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}`, {
@@ -247,6 +247,23 @@ export async function cancelJob(token: string, jobId: string): Promise<void> {
 
 	if (!response.ok) {
 		throw new Error(`Failed to cancel job: ${response.statusText}`);
+	}
+}
+
+/**
+ * Remove a job completely from the queue
+ */
+export async function removeJob(token: string, jobId: string): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}?remove=true`, {
+		method: 'DELETE',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to remove job: ${response.statusText}`);
 	}
 }
 

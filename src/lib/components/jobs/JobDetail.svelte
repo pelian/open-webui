@@ -7,6 +7,7 @@
 		pauseJob,
 		resumeJob,
 		cancelJob,
+		removeJob,
 		type Job,
 		type JobStatusResponse
 	} from '$lib/apis/jobs';
@@ -114,6 +115,18 @@
 		}
 	}
 
+	async function handleRemove() {
+		if (!confirm($i18n.t('Are you sure you want to permanently remove this job? This cannot be undone.'))) return;
+
+		try {
+			await removeJob(localStorage.token, jobId);
+			toast.success($i18n.t('Job removed'));
+			goto('/jobs');
+		} catch (e) {
+			toast.error($i18n.t('Failed to remove job'));
+		}
+	}
+
 	function handleOrientationClick(event: CustomEvent<{ type: string; id: string }>) {
 		const { type, id } = event.detail;
 		selectedOrientation = { type: type as 'directive' | 'mission' | 'mandate', id };
@@ -213,6 +226,15 @@
 								on:click={handleCancel}
 							>
 								{$i18n.t('Cancel')}
+							</button>
+						{/if}
+
+						{#if ['COMPLETED', 'FAILED', 'CANCELLED'].includes(job.status.toUpperCase())}
+							<button
+								class="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
+								on:click={handleRemove}
+							>
+								{$i18n.t('Remove')}
 							</button>
 						{/if}
 					</div>
