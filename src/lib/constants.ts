@@ -14,11 +14,9 @@ export const IMAGES_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1/images`;
 export const RETRIEVAL_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1/retrieval`;
 
 // Aiden API Base URL (AIP-19: Jobs integration)
-// For local testing, use localhost. For production deployment, use Tailscale URL.
-// Note: SSR (browser=false) from Docker needs host.docker.internal or Tailscale URL
-export const AIDEN_API_BASE_URL = browser
-	? `http://localhost:8099`
-	: `http://host.docker.internal:8099`;
+// Frontend calls the backend proxy at /api/v1/aiden which avoids CORS/mixed-content issues.
+// The backend proxy forwards requests to the actual Jobs API (configured via AIDEN_API_BASE_URL env var).
+export const AIDEN_API_BASE_URL = `${WEBUI_API_BASE_URL}/aiden`;
 
 export const WEBUI_VERSION = APP_VERSION;
 export const WEBUI_BUILD_HASH = APP_BUILD_HASH;
