@@ -301,12 +301,19 @@
 					<div class="space-y-2">
 						{#if job.conversations && job.conversations.length > 0}
 							{#each job.conversations as conversation}
-								<button
-									class="w-full text-left p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition group"
+								<div
+									class="w-full text-left p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition group cursor-pointer"
 									on:click={() => {
 										// TODO: Open conversation
 										console.log('Open conversation:', conversation.id);
 									}}
+									on:keydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											console.log('Open conversation:', conversation.id);
+										}
+									}}
+									role="button"
+									tabindex="0"
 								>
 									<div class="flex items-start justify-between">
 										<div class="flex-1 min-w-0">
@@ -328,7 +335,7 @@
 											</svg>
 										</button>
 									</div>
-								</button>
+								</div>
 							{/each}
 						{:else}
 							<div class="text-center py-8 text-gray-500 dark:text-gray-400">
