@@ -268,7 +268,7 @@ export async function createJob(token: string, request: CreateJobRequest): Promi
 export async function updateJob(
 	token: string,
 	jobId: string,
-	updates: Partial<{ name: string; status: string }>
+	updates: Partial<{ name: string; summary: string; status: string }>
 ): Promise<Job> {
 	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}`, {
 		method: 'PATCH',
@@ -351,6 +351,23 @@ export async function resumeJob(token: string, jobId: string): Promise<void> {
 
 	if (!response.ok) {
 		throw new Error(`Failed to resume job: ${response.statusText}`);
+	}
+}
+
+/**
+ * Start a queued job
+ */
+export async function startJob(token: string, jobId: string): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/start`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to start job: ${response.statusText}`);
 	}
 }
 
@@ -642,4 +659,76 @@ export async function getActivity(
 	}
 
 	return response.json();
+}
+
+// ============== Job Files ==============
+
+export interface JobFile {
+	id: string;
+	filename: string;
+	size: number;
+	content_type: string;
+	uploaded_at: string;
+}
+
+export interface JobFilesResponse {
+	files: JobFile[];
+}
+
+/**
+ * Get files attached to a job
+ */
+export async function getJobFiles(token: string, jobId: string): Promise<JobFilesResponse> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/files`, {
+		method: 'GET',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to get job files: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Upload a file to a job
+ */
+export async function uploadJobFile(token: string, jobId: string, file: File): Promise<JobFile> {
+	const formData = new FormData();
+	formData.append('file', file);
+
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/files`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`
+		},
+		body: formData
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to upload file: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Delete a file from a job
+ */
+export async function deleteJobFile(token: string, jobId: string, fileId: string): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/files/${fileId}`, {
+		method: 'DELETE',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to delete file: ${response.statusText}`);
+	}
 }

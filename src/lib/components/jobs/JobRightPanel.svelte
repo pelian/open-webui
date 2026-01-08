@@ -6,13 +6,17 @@
 		type DecisionHistoryItem,
 		type ActivityItem,
 		type CollaboratorInfo,
+		type JobFile,
 		updateAutonomy,
 		getDecisions,
 		submitDecision,
 		getActivity,
 		getCollaborators,
 		addCollaborator,
-		removeCollaborator
+		removeCollaborator,
+		getJobFiles,
+		uploadJobFile,
+		deleteJobFile
 	} from '$lib/apis/jobs';
 	import { toast } from 'svelte-sonner';
 	import Spinner from '$lib/components/common/Spinner.svelte';
@@ -39,13 +43,17 @@
 	let activities: ActivityItem[] = [];
 	let collaborators: CollaboratorInfo[] = [];
 	let jobOwner: string | null = null;
+	let files: JobFile[] = [];
 
 	// Loading states
 	let loadingDecisions = false;
 	let loadingActivity = false;
 	let loadingCollaborators = false;
+	let loadingFiles = false;
 	let submittingDecision: string | null = null;
 	let updatingAutonomy = false;
+	let uploadingFile = false;
+	let draggingOver = false;
 
 	// Add collaborator form
 	let showAddCollaborator = false;
@@ -155,6 +163,67 @@
 		}
 	}
 
+	async function loadFiles() {
+		loadingFiles = true;
+		try {
+			const data = await getJobFiles(localStorage.token, job.job_id);
+			files = data.files;
+		} catch (e) {
+			console.error('Failed to load files:', e);
+			files = [];
+		} finally {
+			loadingFiles = false;
+		}
+	}
+
+	async function handleFileUpload(fileList: FileList | null) {
+		if (!fileList || fileList.length === 0) return;
+
+		uploadingFile = true;
+		try {
+			for (const file of Array.from(fileList)) {
+				await uploadJobFile(localStorage.token, job.job_id, file);
+			}
+			toast.success($i18n.t('File uploaded'));
+			await loadFiles();
+		} catch (e) {
+			toast.error($i18n.t('Failed to upload file'));
+		} finally {
+			uploadingFile = false;
+		}
+	}
+
+	async function handleDeleteFile(fileId: string) {
+		try {
+			await deleteJobFile(localStorage.token, job.job_id, fileId);
+			toast.success($i18n.t('File deleted'));
+			await loadFiles();
+		} catch (e) {
+			toast.error($i18n.t('Failed to delete file'));
+		}
+	}
+
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
+		draggingOver = true;
+	}
+
+	function handleDragLeave() {
+		draggingOver = false;
+	}
+
+	function handleDrop(e: DragEvent) {
+		e.preventDefault();
+		draggingOver = false;
+		handleFileUpload(e.dataTransfer?.files ?? null);
+	}
+
+	function formatFileSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
 	function formatRelativeTime(dateString: string): string {
 		const date = new Date(dateString);
 		const now = new Date();
@@ -180,7 +249,7 @@
 	async function loadAllData() {
 		if (job && job.job_id !== loadedJobId) {
 			loadedJobId = job.job_id;
-			await Promise.all([loadDecisions(), loadActivity(), loadCollaborators()]);
+			await Promise.all([loadDecisions(), loadActivity(), loadCollaborators(), loadFiles()]);
 		}
 	}
 
@@ -427,13 +496,20 @@
 		</div>
 	{/if}
 
-	<!-- Files Section (placeholder) -->
+	<!-- Files Section -->
 	<div class="border-b border-gray-200 dark:border-gray-700">
 		<button
 			class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 			on:click={() => (filesCollapsed = !filesCollapsed)}
 		>
-			<span class="text-sm font-medium text-gray-900 dark:text-white">{$i18n.t('Files')}</span>
+			<div class="flex items-center gap-2">
+				<span class="text-sm font-medium text-gray-900 dark:text-white">{$i18n.t('Files')}</span>
+				{#if files.length > 0}
+					<span class="px-1.5 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full">
+						{files.length}
+					</span>
+				{/if}
+			</div>
 			<svg
 				class="size-4 text-gray-500 transition-transform {filesCollapsed ? '' : 'rotate-180'}"
 				fill="none"
@@ -446,7 +522,70 @@
 
 		{#if !filesCollapsed}
 			<div class="px-4 pb-4">
-				<p class="text-sm text-gray-500 dark:text-gray-400">{$i18n.t('No files attached')}</p>
+				<!-- Drag and Drop Zone -->
+				<div
+					class="relative mb-3 p-4 border-2 border-dashed rounded-lg transition-colors {draggingOver
+						? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+						: 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}"
+					on:dragover={handleDragOver}
+					on:dragleave={handleDragLeave}
+					on:drop={handleDrop}
+					role="button"
+					tabindex="0"
+				>
+					<input
+						type="file"
+						multiple
+						class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+						on:change={(e) => handleFileUpload(e.currentTarget.files)}
+						disabled={uploadingFile}
+					/>
+					<div class="text-center">
+						{#if uploadingFile}
+							<Spinner className="size-6 mx-auto mb-2" />
+							<p class="text-sm text-gray-500 dark:text-gray-400">{$i18n.t('Uploading...')}</p>
+						{:else}
+							<svg class="size-8 mx-auto mb-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+							</svg>
+							<p class="text-sm text-gray-500 dark:text-gray-400">{$i18n.t('Drop files here or click to upload')}</p>
+						{/if}
+					</div>
+				</div>
+
+				<!-- File List -->
+				{#if loadingFiles}
+					<div class="flex justify-center py-4">
+						<Spinner className="size-5" />
+					</div>
+				{:else if files.length === 0}
+					<p class="text-sm text-gray-500 dark:text-gray-400 text-center">{$i18n.t('No files attached')}</p>
+				{:else}
+					<div class="space-y-2">
+						{#each files as file}
+							<div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded-lg group">
+								<div class="flex items-center gap-2 min-w-0 flex-1">
+									<svg class="size-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+									</svg>
+									<div class="min-w-0 flex-1">
+										<p class="text-sm text-gray-900 dark:text-white truncate">{file.filename}</p>
+										<p class="text-xs text-gray-500 dark:text-gray-400">{formatFileSize(file.size)}</p>
+									</div>
+								</div>
+								<button
+									class="p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition"
+									on:click={() => handleDeleteFile(file.id)}
+									title={$i18n.t('Delete file')}
+								>
+									<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+									</svg>
+								</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</div>

@@ -6,8 +6,10 @@
 		getJobStatus,
 		pauseJob,
 		resumeJob,
+		startJob,
 		cancelJob,
 		removeJob,
+		updateJob,
 		type Job,
 		type JobStatusResponse
 	} from '$lib/apis/jobs';
@@ -33,6 +35,14 @@
 	// Orientation panel
 	let showOrientationPanel = false;
 	let selectedOrientation: { type: 'directive' | 'mission' | 'mandate'; id: string } | null = null;
+
+	// Inline editing
+	let editingName = false;
+	let editingNameValue = '';
+	let editingSummary = false;
+	let editingSummaryValue = '';
+	let savingName = false;
+	let savingSummary = false;
 
 	async function loadJob() {
 		loading = true;
@@ -102,6 +112,69 @@
 		} catch (e) {
 			toast.error($i18n.t('Failed to resume job'));
 		}
+	}
+
+	async function handleStart() {
+		try {
+			await startJob(localStorage.token, jobId);
+			toast.success($i18n.t('Job started'));
+			await loadJob();
+			startPolling();
+		} catch (e) {
+			toast.error($i18n.t('Failed to start job'));
+		}
+	}
+
+	function startEditName() {
+		if (!job) return;
+		editingNameValue = job.name;
+		editingName = true;
+	}
+
+	async function saveNameEdit() {
+		if (!job || !editingNameValue.trim()) return;
+		savingName = true;
+		try {
+			await updateJob(localStorage.token, jobId, { name: editingNameValue.trim() });
+			job.name = editingNameValue.trim();
+			editingName = false;
+			toast.success($i18n.t('Name updated'));
+		} catch (e) {
+			toast.error($i18n.t('Failed to update name'));
+		} finally {
+			savingName = false;
+		}
+	}
+
+	function cancelNameEdit() {
+		editingName = false;
+		editingNameValue = '';
+	}
+
+	function startEditSummary() {
+		if (!job) return;
+		editingSummaryValue = job.summary || '';
+		editingSummary = true;
+	}
+
+	async function saveSummaryEdit() {
+		if (!job) return;
+		savingSummary = true;
+		try {
+			await updateJob(localStorage.token, jobId, { summary: editingSummaryValue.trim() || null });
+			job.summary = editingSummaryValue.trim() || null;
+			editingSummary = false;
+			toast.success($i18n.t('Summary updated'));
+		} catch (e) {
+			toast.error($i18n.t('Failed to update summary'));
+		} finally {
+			savingSummary = false;
+		}
+	}
+
+	function cancelSummaryEdit() {
+		editingSummary = false;
+		editingSummaryValue = '';
 	}
 
 	async function handleCancel() {
@@ -188,9 +261,54 @@
 									/>
 								</svg>
 							</button>
-							<h1 class="text-xl font-semibold text-gray-900 dark:text-white truncate">
-								{job.name}
-							</h1>
+
+							<!-- Editable Job Name -->
+							{#if editingName}
+								<div class="flex items-center gap-2 flex-1">
+									<input
+										type="text"
+										bind:value={editingNameValue}
+										class="flex-1 px-2 py-1 text-xl font-semibold bg-white dark:bg-gray-800 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+										on:keydown={(e) => {
+											if (e.key === 'Enter') saveNameEdit();
+											if (e.key === 'Escape') cancelNameEdit();
+										}}
+										autofocus
+									/>
+									<button
+										class="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+										on:click={saveNameEdit}
+										disabled={savingName}
+									>
+										{#if savingName}
+											<Spinner className="size-5" />
+										{:else}
+											<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7" />
+											</svg>
+										{/if}
+									</button>
+									<button
+										class="p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+										on:click={cancelNameEdit}
+									>
+										<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12" />
+										</svg>
+									</button>
+								</div>
+							{:else}
+								<button
+									class="group flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white truncate hover:text-blue-600 dark:hover:text-blue-400"
+									on:click={startEditName}
+								>
+									<span class="truncate">{job.name}</span>
+									<svg class="size-4 opacity-0 group-hover:opacity-100 transition text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+									</svg>
+								</button>
+							{/if}
+
 							<JobStatusBadge status={job.status} size="md" />
 						</div>
 
@@ -205,6 +323,20 @@
 
 					<!-- Actions -->
 					<div class="flex items-center gap-2">
+						<!-- Start button for QUEUED/PENDING jobs -->
+						{#if ['QUEUED', 'PENDING', 'DRAFT'].includes(job.status.toUpperCase())}
+							<button
+								class="px-4 py-1.5 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition flex items-center gap-2"
+								on:click={handleStart}
+							>
+								<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								{$i18n.t('Start Job')}
+							</button>
+						{/if}
+
 						{#if job.status.toUpperCase() === 'RUNNING'}
 							<button
 								class="px-3 py-1.5 text-sm font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition"
@@ -260,15 +392,66 @@
 
 			<!-- Job Content -->
 			<div class="flex-1 overflow-y-auto p-6">
-				<!-- Summary -->
-				{#if job.summary}
-					<div class="mb-6">
-						<h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+				<!-- Summary (Editable) -->
+				<div class="mb-6">
+					<div class="flex items-center justify-between mb-2">
+						<h2 class="text-sm font-medium text-gray-500 dark:text-gray-400">
 							{$i18n.t('Summary')}
 						</h2>
-						<p class="text-gray-900 dark:text-white">{job.summary}</p>
+						{#if !editingSummary}
+							<button
+								class="p-1 text-gray-400 hover:text-blue-500 transition"
+								on:click={startEditSummary}
+							>
+								<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+								</svg>
+							</button>
+						{/if}
 					</div>
-				{/if}
+
+					{#if editingSummary}
+						<div class="space-y-2">
+							<textarea
+								bind:value={editingSummaryValue}
+								rows="3"
+								class="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+								placeholder={$i18n.t('Add a summary for this job...')}
+								on:keydown={(e) => {
+									if (e.key === 'Escape') cancelSummaryEdit();
+								}}
+							></textarea>
+							<div class="flex justify-end gap-2">
+								<button
+									class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
+									on:click={cancelSummaryEdit}
+								>
+									{$i18n.t('Cancel')}
+								</button>
+								<button
+									class="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition disabled:opacity-50"
+									on:click={saveSummaryEdit}
+									disabled={savingSummary}
+								>
+									{#if savingSummary}
+										<Spinner className="size-4" />
+									{:else}
+										{$i18n.t('Save')}
+									{/if}
+								</button>
+							</div>
+						</div>
+					{:else if job.summary}
+						<p class="text-gray-900 dark:text-white">{job.summary}</p>
+					{:else}
+						<button
+							class="text-sm text-gray-400 hover:text-blue-500 transition italic"
+							on:click={startEditSummary}
+						>
+							{$i18n.t('Click to add a summary...')}
+						</button>
+					{/if}
+				</div>
 
 				<!-- Conversations Section (Claude Projects-style) -->
 				<div class="mb-6">
