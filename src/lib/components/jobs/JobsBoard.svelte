@@ -14,6 +14,17 @@
 	let ownerFilter: string = '';
 	let searchQuery: string = '';
 
+	// Sort state
+	type SortOption = 'recent_activity' | 'last_edited' | 'date_created';
+	let sortBy: SortOption = 'recent_activity';
+	let showSortDropdown = false;
+
+	const sortOptions: { value: SortOption; label: string }[] = [
+		{ value: 'recent_activity', label: 'Recent Activity' },
+		{ value: 'last_edited', label: 'Last Edited' },
+		{ value: 'date_created', label: 'Date Created' }
+	];
+
 	// Pagination
 	let limit = 20;
 	let offset = 0;
@@ -25,7 +36,10 @@
 	let error: string | null = null;
 
 	// Quick filter buttons
-	let quickFilter: 'all' | 'my' | 'active' | 'waiting' = 'all';
+	let quickFilter: 'all' | 'my' | 'shared' | 'active' | 'waiting' = 'all';
+
+	// Debounce timer for search
+	let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async function loadJobs() {
 		loading = true;
@@ -40,11 +54,21 @@
 			// Apply quick filters
 			if (quickFilter === 'my') {
 				params.owner = 'me';
+			} else if (quickFilter === 'shared') {
+				params.visibility = 'shared';
 			} else if (quickFilter === 'active') {
 				params.status = 'RUNNING';
 			} else if (quickFilter === 'waiting') {
 				params.status = 'WAITING_ON_USER';
 			}
+
+			// Apply search query
+			if (searchQuery.trim()) {
+				params.search = searchQuery.trim();
+			}
+
+			// Apply sort
+			params.sort = sortBy;
 
 			const response: JobListResponse = await getJobs(localStorage.token, params);
 			jobs = response.jobs;
@@ -59,6 +83,24 @@
 
 	function handleQuickFilter(filter: typeof quickFilter) {
 		quickFilter = filter;
+		offset = 0;
+		loadJobs();
+	}
+
+	function handleSearch() {
+		// Debounce search to avoid too many API calls
+		if (searchDebounceTimer) {
+			clearTimeout(searchDebounceTimer);
+		}
+		searchDebounceTimer = setTimeout(() => {
+			offset = 0;
+			loadJobs();
+		}, 300);
+	}
+
+	function handleSort(option: SortOption) {
+		sortBy = option;
+		showSortDropdown = false;
 		offset = 0;
 		loadJobs();
 	}
@@ -83,8 +125,25 @@
 		return date.toLocaleDateString();
 	}
 
+	function getSortLabel(value: SortOption): string {
+		const option = sortOptions.find((o) => o.value === value);
+		return option ? option.label : 'Recent Activity';
+	}
+
+	// Close dropdown when clicking outside
+	function handleClickOutside(event: MouseEvent) {
+		const target = event.target as HTMLElement;
+		if (!target.closest('.sort-dropdown')) {
+			showSortDropdown = false;
+		}
+	}
+
 	onMount(() => {
 		loadJobs();
+		document.addEventListener('click', handleClickOutside);
+		return () => {
+			document.removeEventListener('click', handleClickOutside);
+		};
 	});
 </script>
 
@@ -101,6 +160,69 @@
 			>
 				{$i18n.t('New Job')}
 			</button>
+		</div>
+
+		<!-- Search and Sort Row -->
+		<div class="flex items-center gap-3 mb-3">
+			<!-- Search Input -->
+			<div class="flex-1 relative">
+				<svg
+					class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"
+					/>
+				</svg>
+				<input
+					type="text"
+					bind:value={searchQuery}
+					on:input={handleSearch}
+					placeholder={$i18n.t('Search jobs...')}
+					class="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+				/>
+			</div>
+
+			<!-- Sort Dropdown -->
+			<div class="relative sort-dropdown">
+				<button
+					class="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+					on:click|stopPropagation={() => (showSortDropdown = !showSortDropdown)}
+				>
+					<span>{$i18n.t('Sort')}: {getSortLabel(sortBy)}</span>
+					<svg
+						class="size-4 transition-transform {showSortDropdown ? 'rotate-180' : ''}"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+					>
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
+					</svg>
+				</button>
+
+				{#if showSortDropdown}
+					<div
+						class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10"
+					>
+						{#each sortOptions as option}
+							<button
+								class="w-full px-4 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition first:rounded-t-lg last:rounded-b-lg {sortBy ===
+								option.value
+									? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+									: 'text-gray-700 dark:text-gray-300'}"
+								on:click={() => handleSort(option.value)}
+							>
+								{$i18n.t(option.label)}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
 		</div>
 
 		<!-- Quick Filters -->
@@ -122,6 +244,14 @@
 				{$i18n.t('My Jobs')}
 			</button>
 			<button
+				class="px-3 py-1.5 rounded-lg text-sm font-medium transition {quickFilter === 'shared'
+					? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
+					: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+				on:click={() => handleQuickFilter('shared')}
+			>
+				{$i18n.t('Shared')}
+			</button>
+			<button
 				class="px-3 py-1.5 rounded-lg text-sm font-medium transition {quickFilter === 'active'
 					? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
 					: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}"
@@ -135,7 +265,7 @@
 					: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}"
 				on:click={() => handleQuickFilter('waiting')}
 			>
-				{$i18n.t('Waiting on me')}
+				{$i18n.t('Waiting')}
 			</button>
 		</div>
 	</div>

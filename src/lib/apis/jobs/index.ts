@@ -61,7 +61,52 @@ export interface CreateJobRequest {
 	team_ref?: string;
 	persona_hint?: string;
 	autonomy_level?: string;
+	visibility?: string;
 	conversation_id?: string;
+	owner_user_id?: string;
+}
+
+export interface PendingDecision {
+	id: string;
+	question: string;
+	options: string[];
+	context: string | null;
+	created_at: string;
+}
+
+export interface DecisionHistoryItem {
+	id: string;
+	question: string;
+	response: string;
+	rationale: string | null;
+	created_at: string;
+	resolved_at: string;
+}
+
+export interface JobDecisionsResponse {
+	pending: PendingDecision[];
+	history: DecisionHistoryItem[];
+}
+
+export interface CollaboratorInfo {
+	user_id: string;
+	role: string;
+}
+
+export interface JobCollaboratorsResponse {
+	owner: string | null;
+	collaborators: CollaboratorInfo[];
+}
+
+export interface ActivityItem {
+	timestamp: string;
+	action: string;
+	description: string;
+}
+
+export interface JobActivityResponse {
+	activities: ActivityItem[];
+	total: number;
 }
 
 export interface DirectiveDetail {
@@ -399,6 +444,193 @@ export async function attachConversationToJob(
 
 	if (!response.ok) {
 		throw new Error(`Failed to attach conversation to job: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Update job autonomy level
+ */
+export async function updateAutonomy(
+	token: string,
+	jobId: string,
+	autonomyLevel: 'supervised' | 'guided' | 'autonomous'
+): Promise<Job> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/autonomy`, {
+		method: 'PATCH',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ autonomy_level: autonomyLevel })
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to update autonomy: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Get job collaborators
+ */
+export async function getCollaborators(
+	token: string,
+	jobId: string
+): Promise<JobCollaboratorsResponse> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/collaborators`, {
+		method: 'GET',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to get collaborators: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Add a collaborator to a job
+ */
+export async function addCollaborator(
+	token: string,
+	jobId: string,
+	userId: string,
+	role: string = 'viewer'
+): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/collaborators`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ user_id: userId, role })
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to add collaborator: ${response.statusText}`);
+	}
+}
+
+/**
+ * Remove a collaborator from a job
+ */
+export async function removeCollaborator(
+	token: string,
+	jobId: string,
+	userId: string
+): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/collaborators/${userId}`, {
+		method: 'DELETE',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to remove collaborator: ${response.statusText}`);
+	}
+}
+
+/**
+ * Request a decision from the user (creates a pending decision)
+ */
+export async function requestDecision(
+	token: string,
+	jobId: string,
+	question: string,
+	options: string[] = [],
+	context?: string
+): Promise<{ decision_id: string; message: string }> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/decisions`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ question, options, context })
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to request decision: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Get pending and completed decisions for a job
+ */
+export async function getDecisions(
+	token: string,
+	jobId: string
+): Promise<JobDecisionsResponse> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/decisions`, {
+		method: 'GET',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to get decisions: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Submit a decision response
+ */
+export async function submitDecision(
+	token: string,
+	jobId: string,
+	decisionId: string,
+	response: string,
+	rationale?: string
+): Promise<{ message: string; remaining: number }> {
+	const res = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/decisions/${decisionId}`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ response, rationale })
+	});
+
+	if (!res.ok) {
+		throw new Error(`Failed to submit decision: ${res.statusText}`);
+	}
+
+	return res.json();
+}
+
+/**
+ * Get activity log for a job
+ */
+export async function getActivity(
+	token: string,
+	jobId: string,
+	limit: number = 50
+): Promise<JobActivityResponse> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/activity?limit=${limit}`, {
+		method: 'GET',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to get activity: ${response.statusText}`);
 	}
 
 	return response.json();

@@ -16,6 +16,7 @@
 	import JobStatusBadge from './JobStatusBadge.svelte';
 	import OrientationBreadcrumb from './OrientationBreadcrumb.svelte';
 	import OrientationPanel from './OrientationPanel.svelte';
+	import JobRightPanel from './JobRightPanel.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -270,7 +271,7 @@
 				{/if}
 
 				<!-- Metadata -->
-				<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+				<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
 					<div>
 						<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
 							{$i18n.t('Owner')}
@@ -285,14 +286,6 @@
 						</div>
 						<div class="text-sm text-gray-900 dark:text-white">
 							{job.persona_id || 'aiden'}
-						</div>
-					</div>
-					<div>
-						<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-							{$i18n.t('Autonomy')}
-						</div>
-						<div class="text-sm text-gray-900 dark:text-white capitalize">
-							{job.autonomy_level || 'L1'}
 						</div>
 					</div>
 					<div>
@@ -315,32 +308,16 @@
 					</div>
 				</div>
 
-				<!-- Waiting on User -->
-				{#if currentStatus?.waiting_for === 'user_clarification'}
-					<div
-						class="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg"
-					>
-						<div class="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
-							<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-								/>
-							</svg>
-							<span class="font-medium">{$i18n.t('Waiting for your input')}</span>
-						</div>
-						<p class="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-							{$i18n.t('This job requires clarification. Check the linked conversation for details.')}
-						</p>
-					</div>
-				{/if}
-			</div>
+				</div>
 		{/if}
 	</div>
 
-	<!-- Orientation Side Panel -->
+	<!-- Right Panel with Status, Decisions, Activity, Collaborators -->
+	{#if job}
+		<JobRightPanel {job} on:updated={loadJob} />
+	{/if}
+
+	<!-- Orientation Side Panel (slides over right panel) -->
 	{#if showOrientationPanel && selectedOrientation}
 		<OrientationPanel
 			type={selectedOrientation.type}
