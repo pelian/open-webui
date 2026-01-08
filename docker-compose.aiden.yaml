@@ -1,7 +1,29 @@
 # docker-compose.aiden.yaml
 # Pelian Open WebUI deployment for Aiden integration
+#
+# IMPORTANT: Postgres is included in this file to ensure data persistence
+# across container rebuilds. Never separate the database from the app compose.
 
 services:
+  # PostgreSQL - MUST be in same compose to ensure network connectivity
+  postgres:
+    image: postgres:16-alpine
+    container_name: pelian-postgres
+    environment:
+      - POSTGRES_USER=openwebui
+      - POSTGRES_PASSWORD=openwebui
+      - POSTGRES_DB=openwebui
+    volumes:
+      - pelian-postgres-data:/var/lib/postgresql/data
+    networks:
+      - pelian-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openwebui -d openwebui"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   open-webui:
     build:
       context: .
@@ -10,6 +32,9 @@ services:
         - USE_SLIM=true
     image: pelian-open-webui:aiden
     container_name: pelian-open-webui
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - .env.aiden
     volumes:
@@ -17,6 +42,8 @@ services:
     ports:
       - "${WEBUI_PORT:-3000}:8080"
     environment:
+      # Database - Use Postgres for persistence (CRITICAL)
+      - "DATABASE_URL=postgresql://openwebui:openwebui@postgres:5432/openwebui"
       - "WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-pelian-aiden-secret-change-me}"
       - "OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:8080}"
       - "AIDEN_API_BASE_URL=${AIDEN_API_BASE_URL:-http://host.docker.internal:8000}"
@@ -41,8 +68,8 @@ services:
 
 networks:
   pelian-net:
-    external: true
-    name: pelian-open-webui_pelian-net
+    driver: bridge
 
 volumes:
   pelian-webui-data:
+  pelian-postgres-data:
