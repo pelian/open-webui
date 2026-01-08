@@ -18,6 +18,7 @@ export interface Job {
 	status: string;
 	state: string;
 	owner_subject_id: string | null;
+	owner_name: string | null;
 	persona_id: string | null;
 	workspace_id: string | null;
 	autonomy_level: string;
@@ -27,6 +28,9 @@ export interface Job {
 	updated_at: string;
 	orientation_chips: OrientationChip[];
 	conversations?: JobConversation[];
+	tags?: string[];
+	archived?: boolean;
+	archived_at?: string | null;
 }
 
 export interface OrientationChip {
@@ -39,11 +43,16 @@ export interface JobListItem {
 	job_id: string;
 	name: string;
 	status: string;
+	summary?: string | null;
 	owner_subject_id: string | null;
-	persona_id: string | null;
+	owner_name: string | null;
 	progress: number;
 	last_activity: string;
 	orientation_chips: OrientationChip[];
+	tags?: string[];
+	archived?: boolean;
+	starred?: boolean;
+	pending_decisions_count?: number;
 }
 
 export interface JobListResponse {
@@ -99,6 +108,8 @@ export interface JobDecisionsResponse {
 export interface CollaboratorInfo {
 	user_id: string;
 	role: string;
+	name?: string;
+	email?: string;
 }
 
 export interface JobCollaboratorsResponse {
@@ -178,6 +189,10 @@ export async function getJobs(
 		status?: string;
 		owner?: string;
 		workspace?: string;
+		visibility?: string;
+		archived?: string;
+		search?: string;
+		sort?: string;
 		limit?: number;
 		offset?: number;
 	} = {}
@@ -186,6 +201,10 @@ export async function getJobs(
 	if (params.status) searchParams.set('status', params.status);
 	if (params.owner) searchParams.set('owner', params.owner);
 	if (params.workspace) searchParams.set('workspace', params.workspace);
+	if (params.visibility) searchParams.set('visibility', params.visibility);
+	if (params.archived) searchParams.set('archived', params.archived);
+	if (params.search) searchParams.set('search', params.search);
+	if (params.sort) searchParams.set('sort', params.sort);
 	if (params.limit) searchParams.set('limit', params.limit.toString());
 	if (params.offset) searchParams.set('offset', params.offset.toString());
 
@@ -368,6 +387,40 @@ export async function startJob(token: string, jobId: string): Promise<void> {
 
 	if (!response.ok) {
 		throw new Error(`Failed to start job: ${response.statusText}`);
+	}
+}
+
+/**
+ * Archive a job
+ */
+export async function archiveJob(token: string, jobId: string): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/archive`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to archive job: ${response.statusText}`);
+	}
+}
+
+/**
+ * Unarchive a job
+ */
+export async function unarchiveJob(token: string, jobId: string): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/unarchive`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to unarchive job: ${response.statusText}`);
 	}
 }
 
@@ -669,6 +722,7 @@ export interface JobFile {
 	size: number;
 	content_type: string;
 	uploaded_at: string;
+	url?: string;  // URL for downloading/previewing the file
 }
 
 export interface JobFilesResponse {

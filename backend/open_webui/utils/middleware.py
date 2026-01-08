@@ -139,6 +139,99 @@ DEFAULT_REASONING_TAGS = [
 DEFAULT_SOLUTION_TAGS = [("<|begin_of_solution|>", "<|end_of_solution|>")]
 DEFAULT_CODE_INTERPRETER_TAGS = [("<code_interpreter>", "</code_interpreter>")]
 
+# =============================================================================
+# Query Classification for Intelligent Web Search
+# =============================================================================
+# Patterns that indicate a query needs web search
+WEB_SEARCH_TRIGGER_PATTERNS = [
+    # Time-sensitive / current events
+    r"\b(current|latest|today|now|this week|this month|this year|recent|new|breaking)\b",
+    r"\b(202[4-9]|203[0-9])\b",  # Recent/future years
+    r"\b(yesterday|last week|last month)\b",
+    # URLs and references
+    r"https?://\S+",  # URLs
+    r"@\w+",  # Social media handles
+    r"\b(tweet|post|article|video|link)\b.*\b(from|by|about)\b",
+    # Explicit search intent
+    r"\b(search|look up|find|google)\b",
+    r"\b(who is|what is|when is|where is)\b.*\b(now|currently|today)\b",
+    # Price/stock/rate queries
+    r"\b(price|cost|rate|stock|weather)\b.*\b(of|for|in)\b",
+    # News and events
+    r"\b(news|headlines|election|announcement)\b",
+]
+
+# Patterns that indicate NO web search needed
+WEB_SEARCH_SKIP_PATTERNS = [
+    # Basic math
+    r"^\s*[\d\+\-\*\/\^\(\)\s\.]+\s*[=\?]?\s*$",
+    r"\b(what is|calculate|solve)\b.*\b(\d+\s*[\+\-\*\/]\s*\d+)",
+    # Simple greetings/chat
+    r"^(hi|hello|hey|good morning|good afternoon|good evening|how are you)\b",
+    r"^(thank you|thanks|bye|goodbye|see you)\b",
+    # Story/creative requests
+    r"\b(tell me a story|once upon a time|write a poem|make up)\b",
+    # Personal opinion
+    r"\b(what do you think|in your opinion|how do you feel)\b",
+    # Basic knowledge (static facts)
+    r"\b(capital of|largest|smallest|first|invented)\b(?!.*\b(current|now|today)\b)",
+]
+
+
+def should_trigger_web_search(query: str) -> bool:
+    """
+    Determine if a query should trigger web search.
+
+    Returns True if:
+    - Query contains time-sensitive keywords
+    - Query contains URLs or external references
+    - Query explicitly requests search
+
+    Returns False if:
+    - Query is basic math
+    - Query is simple greeting/chat
+    - Query is creative/opinion request
+    - Query is about static/basic knowledge
+    """
+    query_lower = query.lower().strip()
+
+    # First check skip patterns (these definitely don't need search)
+    for pattern in WEB_SEARCH_SKIP_PATTERNS:
+        if re.search(pattern, query_lower, re.IGNORECASE):
+            log.debug(f"Web search SKIPPED - matched skip pattern: {pattern}")
+            return False
+
+    # Then check trigger patterns
+    for pattern in WEB_SEARCH_TRIGGER_PATTERNS:
+        if re.search(pattern, query_lower, re.IGNORECASE):
+            log.debug(f"Web search TRIGGERED - matched pattern: {pattern}")
+            return True
+
+    # Default: don't search (prefer not searching over searching unnecessarily)
+    log.debug(f"Web search SKIPPED - no trigger patterns matched")
+    return False
+
+
+# =============================================================================
+# Thinking Tag Fix for vLLM Thinking Models
+# =============================================================================
+# vLLM chat templates add <think> as a generation prompt prefix, but the
+# OpenAI-compatible API only returns content generated AFTER that prefix.
+# This results in responses with </think> closing tags but no opening tags.
+#
+# The proper fix is vLLM's --enable-reasoning --reasoning-parser flag, but
+# custom builds (like NVFP4 quantization images) may not support this feature.
+# This client-side fix prepends the missing opening tag when detected.
+#
+# Track state to ensure we only apply the fix once per response stream.
+_thinking_tag_fix_applied = False
+
+
+def reset_thinking_tag_fix_state():
+    """Reset the thinking tag fix state for a new response."""
+    global _thinking_tag_fix_applied
+    _thinking_tag_fix_applied = False
+
 
 def process_tool_result(
     request,
@@ -1325,9 +1418,21 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             )
 
         if "web_search" in features and features["web_search"]:
-            form_data = await chat_web_search_handler(
-                request, form_data, extra_params, user
-            )
+            # Get the user's last message to classify
+            last_user_message = ""
+            for msg in reversed(form_data.get("messages", [])):
+                if msg.get("role") == "user":
+                    last_user_message = msg.get("content", "")
+                    break
+
+            # Only trigger web search if the query actually needs it
+            if should_trigger_web_search(last_user_message):
+                log.info(f"Web search triggered for query: {last_user_message[:50]}...")
+                form_data = await chat_web_search_handler(
+                    request, form_data, extra_params, user
+                )
+            else:
+                log.info(f"Web search skipped for query: {last_user_message[:50]}...")
 
         if "image_generation" in features and features["image_generation"]:
             form_data = await chat_image_generation_handler(
@@ -2498,6 +2603,9 @@ async def process_chat_response(
                     nonlocal content
                     nonlocal content_blocks
 
+                    # Reset thinking tag fix state for new response
+                    reset_thinking_tag_fix_state()
+
                     response_tool_calls = []
 
                     delta_count = 0
@@ -2770,6 +2878,22 @@ async def process_chat_response(
                                         content_blocks[-1]["content"] = (
                                             content_blocks[-1]["content"] + value
                                         )
+
+                                        # Fix missing <think> tag from vLLM thinking models
+                                        # Apply once when we first detect </think> without <think>
+                                        global _thinking_tag_fix_applied
+                                        if (
+                                            DETECT_REASONING_TAGS
+                                            and not _thinking_tag_fix_applied
+                                            and "</think>" in content
+                                            and "<think>" not in content
+                                        ):
+                                            content = "<think>\n" + content
+                                            content_blocks[-1]["content"] = (
+                                                "<think>\n" + content_blocks[-1]["content"]
+                                            )
+                                            _thinking_tag_fix_applied = True
+                                            log.debug("Fixed missing <think> tag in streaming response")
 
                                         if DETECT_REASONING_TAGS:
                                             content, content_blocks, _ = (

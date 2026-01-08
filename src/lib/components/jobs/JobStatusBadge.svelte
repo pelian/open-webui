@@ -41,7 +41,7 @@
 	$: sizeClass = size === 'sm' ? 'px-1.5 py-0.5 text-xs' : 'px-2 py-1 text-sm';
 </script>
 
-<span class="inline-flex items-center rounded font-medium {sizeClass} {config.className}">
+<span class="inline-flex items-center rounded font-medium shrink-0 whitespace-nowrap {sizeClass} {config.className}">
 	{#if status.toUpperCase() === 'RUNNING'}
 		<span class="mr-1 size-1.5 bg-current rounded-full animate-pulse"></span>
 	{/if}

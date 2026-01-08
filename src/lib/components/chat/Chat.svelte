@@ -205,6 +205,28 @@
 				await setDefaults();
 			}
 
+			// Check for pending message from job or other source
+			const pendingMessageRaw = localStorage.getItem('pendingMessage');
+			if (pendingMessageRaw) {
+				try {
+					const pendingMessage = JSON.parse(pendingMessageRaw);
+					if (pendingMessage.chatId === chatIdProp) {
+						localStorage.removeItem('pendingMessage');
+						await tick();
+						// Set the message in the input and submit
+						if (pendingMessage.message) {
+							messageInput?.setText(pendingMessage.message, async () => {
+								await tick();
+								submitPrompt(pendingMessage.message);
+							});
+						}
+					}
+				} catch (e) {
+					console.error('Failed to process pending message:', e);
+					localStorage.removeItem('pendingMessage');
+				}
+			}
+
 			const chatInput = document.getElementById('chat-input');
 			chatInput?.focus();
 		} else {

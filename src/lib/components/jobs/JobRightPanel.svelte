@@ -18,6 +18,7 @@
 		uploadJobFile,
 		deleteJobFile
 	} from '$lib/apis/jobs';
+	import { getUsers } from '$lib/apis/users';
 	import { toast } from 'svelte-sonner';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 
@@ -60,6 +61,17 @@
 	let newCollaboratorId = '';
 	let newCollaboratorRole = 'viewer';
 
+	// User search for collaborator auto-suggest
+	let userSearchQuery = '';
+	let userSearchResults: Array<{ id: string; name: string; email: string }> = [];
+	let showUserDropdown = false;
+	let loadingUsers = false;
+	let selectedUser: { id: string; name: string; email: string } | null = null;
+	let userSearchDebounce: ReturnType<typeof setTimeout> | null = null;
+
+	// Cache user info for display (user_id -> {name, email})
+	let userInfoCache: Map<string, { name: string; email: string }> = new Map();
+
 	// Autonomy dropdown
 	let showAutonomyDropdown = false;
 	const autonomyOptions = [
@@ -98,7 +110,36 @@
 		try {
 			const data = await getCollaborators(localStorage.token, job.job_id);
 			jobOwner = data.owner;
-			collaborators = data.collaborators;
+
+			// Enrich collaborators with cached user info
+			collaborators = data.collaborators.map((collab) => {
+				const cached = userInfoCache.get(collab.user_id);
+				if (cached) {
+					return { ...collab, name: cached.name, email: cached.email };
+				}
+				return collab;
+			});
+
+			// Fetch info for collaborators not in cache
+			const uncachedIds = collaborators
+				.filter((c) => !c.name)
+				.map((c) => c.user_id);
+
+			if (uncachedIds.length > 0) {
+				// Fetch all users and filter to get the ones we need
+				const result = await getUsers(localStorage.token);
+				if (result && result.users) {
+					const userMap = new Map(result.users.map((u: any) => [u.id, u]));
+					collaborators = collaborators.map((collab) => {
+						const user = userMap.get(collab.user_id);
+						if (user) {
+							userInfoCache.set(collab.user_id, { name: user.name, email: user.email });
+							return { ...collab, name: user.name, email: user.email };
+						}
+						return collab;
+					});
+				}
+			}
 		} catch (e) {
 			console.error('Failed to load collaborators:', e);
 		} finally {
@@ -139,13 +180,74 @@
 		}
 	}
 
+	async function searchUsers(query: string) {
+		if (userSearchDebounce) clearTimeout(userSearchDebounce);
+
+		userSearchDebounce = setTimeout(async () => {
+			loadingUsers = true;
+			try {
+				// Get users, optionally filtered by query, sorted by activity
+				const result = await getUsers(localStorage.token, query || undefined, 'last_active_at', 'desc');
+				if (result && result.users) {
+					// Filter out users already added as collaborators
+					const existingIds = new Set(collaborators.map(c => c.user_id));
+					userSearchResults = result.users
+						.filter((u: any) => !existingIds.has(u.id))
+						.slice(0, 10)
+						.map((u: any) => ({
+							id: u.id,
+							name: u.name || u.email?.split('@')[0] || 'Unknown',
+							email: u.email || ''
+						}));
+				}
+			} catch (e) {
+				console.error('Failed to search users:', e);
+				userSearchResults = [];
+			} finally {
+				loadingUsers = false;
+			}
+		}, 200);
+	}
+
+	function selectUser(user: { id: string; name: string; email: string }) {
+		selectedUser = user;
+		newCollaboratorId = user.id;
+		userSearchQuery = user.name;
+		showUserDropdown = false;
+	}
+
+	function handleUserInputFocus() {
+		showUserDropdown = true;
+		// Load initial users when focused
+		if (userSearchResults.length === 0) {
+			searchUsers('');
+		}
+	}
+
+	function handleUserInputBlur() {
+		// Delay hiding to allow click on dropdown items
+		setTimeout(() => {
+			showUserDropdown = false;
+		}, 200);
+	}
+
 	async function handleAddCollaborator() {
 		if (!newCollaboratorId.trim()) return;
 
 		try {
 			await addCollaborator(localStorage.token, job.job_id, newCollaboratorId, newCollaboratorRole);
 			toast.success($i18n.t('Collaborator added'));
+
+			// Cache user info before resetting
+			if (selectedUser) {
+				userInfoCache.set(selectedUser.id, { name: selectedUser.name, email: selectedUser.email });
+			}
+
+			// Reset form
 			newCollaboratorId = '';
+			userSearchQuery = '';
+			selectedUser = null;
+			userSearchResults = [];
 			showAddCollaborator = false;
 			await loadCollaborators();
 		} catch (e) {
@@ -238,6 +340,57 @@
 		if (diffDays < 7) return `${diffDays}d ago`;
 
 		return date.toLocaleDateString();
+	}
+
+	// File type detection and icons
+	type FileType = 'image' | 'pdf' | 'document' | 'spreadsheet' | 'code' | 'archive' | 'video' | 'audio' | 'other';
+
+	function getFileType(filename: string): FileType {
+		const ext = filename.split('.').pop()?.toLowerCase() || '';
+
+		if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) return 'image';
+		if (ext === 'pdf') return 'pdf';
+		if (['doc', 'docx', 'txt', 'rtf', 'odt', 'md'].includes(ext)) return 'document';
+		if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) return 'spreadsheet';
+		if (['js', 'ts', 'py', 'java', 'cpp', 'c', 'h', 'css', 'html', 'json', 'xml', 'yaml', 'yml', 'sh', 'sql'].includes(ext)) return 'code';
+		if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(ext)) return 'archive';
+		if (['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext)) return 'video';
+		if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) return 'audio';
+		return 'other';
+	}
+
+	function getFileTypeLabel(fileType: FileType): string {
+		const labels: Record<FileType, string> = {
+			image: 'Image',
+			pdf: 'PDF',
+			document: 'Document',
+			spreadsheet: 'Spreadsheet',
+			code: 'Code',
+			archive: 'Archive',
+			video: 'Video',
+			audio: 'Audio',
+			other: 'File'
+		};
+		return labels[fileType];
+	}
+
+	function getFileTypeColor(fileType: FileType): string {
+		const colors: Record<FileType, string> = {
+			image: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
+			pdf: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+			document: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+			spreadsheet: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
+			code: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
+			archive: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400',
+			video: 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400',
+			audio: 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400',
+			other: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+		};
+		return colors[fileType];
+	}
+
+	function isImageFile(filename: string): boolean {
+		return getFileType(filename) === 'image';
 	}
 
 	function getAutonomyLabel(level: string): string {
@@ -563,18 +716,81 @@
 				{:else}
 					<div class="space-y-2">
 						{#each files as file}
-							<div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded-lg group">
-								<div class="flex items-center gap-2 min-w-0 flex-1">
-									<svg class="size-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-									</svg>
-									<div class="min-w-0 flex-1">
-										<p class="text-sm text-gray-900 dark:text-white truncate">{file.filename}</p>
-										<p class="text-xs text-gray-500 dark:text-gray-400">{formatFileSize(file.size)}</p>
+							{@const fileType = getFileType(file.filename)}
+							<div class="flex items-start gap-3 p-2.5 bg-gray-100 dark:bg-gray-800 rounded-lg group hover:bg-gray-150 dark:hover:bg-gray-750 transition">
+								<!-- File Preview / Icon -->
+								<div class="flex-shrink-0">
+									{#if isImageFile(file.filename) && file.url}
+										<!-- Image thumbnail preview -->
+										<div class="size-10 rounded overflow-hidden bg-gray-200 dark:bg-gray-700">
+											<img
+												src={file.url}
+												alt={file.filename}
+												class="size-full object-cover"
+											/>
+										</div>
+									{:else}
+										<!-- File type icon -->
+										<div class="size-10 rounded flex items-center justify-center {getFileTypeColor(fileType)}">
+											{#if fileType === 'pdf'}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V9a2 2 0 012-2h2a2 2 0 012 2v9a2 2 0 01-2 2h-2z" />
+												</svg>
+											{:else if fileType === 'image'}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m4 16 4.586-4.586a2 2 0 012.828 0L16 16m-2-2 1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+												</svg>
+											{:else if fileType === 'document'}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+												</svg>
+											{:else if fileType === 'spreadsheet'}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+												</svg>
+											{:else if fileType === 'code'}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+												</svg>
+											{:else if fileType === 'archive'}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+												</svg>
+											{:else if fileType === 'video'}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+												</svg>
+											{:else if fileType === 'audio'}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+												</svg>
+											{:else}
+												<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+												</svg>
+											{/if}
+										</div>
+									{/if}
+								</div>
+
+								<!-- File Info -->
+								<div class="min-w-0 flex-1">
+									<p class="text-sm text-gray-900 dark:text-white truncate" title={file.filename}>
+										{file.filename}
+									</p>
+									<div class="flex items-center gap-2 mt-0.5">
+										<span class="text-xs px-1.5 py-0.5 rounded {getFileTypeColor(fileType)}">
+											{getFileTypeLabel(fileType)}
+										</span>
+										<span class="text-xs text-gray-500 dark:text-gray-400">
+											{formatFileSize(file.size)}
+										</span>
 									</div>
 								</div>
+
+								<!-- Delete button -->
 								<button
-									class="p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition"
+									class="p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition flex-shrink-0"
 									on:click={() => handleDeleteFile(file.id)}
 									title={$i18n.t('Delete file')}
 								>
@@ -632,14 +848,15 @@
 
 						<!-- Collaborators -->
 						{#each collaborators as collab}
+							{@const displayName = collab.name || collab.user_id}
 							<div class="flex items-center justify-between">
 								<div class="flex items-center gap-2">
 									<div class="size-6 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
 										<span class="text-xs font-medium text-gray-600 dark:text-gray-400">
-											{collab.user_id.charAt(0).toUpperCase()}
+											{displayName.charAt(0).toUpperCase()}
 										</span>
 									</div>
-									<span class="text-sm text-gray-900 dark:text-white">{collab.user_id}</span>
+									<span class="text-sm text-gray-900 dark:text-white" title={collab.email || collab.user_id}>{displayName}</span>
 								</div>
 								<div class="flex items-center gap-2">
 									<span class="text-xs text-gray-500 dark:text-gray-400 capitalize">{collab.role}</span>
@@ -658,12 +875,72 @@
 						<!-- Add Collaborator -->
 						{#if showAddCollaborator}
 							<div class="mt-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg space-y-2">
-								<input
-									type="text"
-									bind:value={newCollaboratorId}
-									placeholder={$i18n.t('User ID')}
-									class="w-full px-2 py-1.5 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded"
-								/>
+								<!-- User Search Auto-Suggest -->
+								<div class="relative">
+									<input
+										type="text"
+										bind:value={userSearchQuery}
+										on:input={(e) => searchUsers(e.currentTarget.value)}
+										on:focus={handleUserInputFocus}
+										on:blur={handleUserInputBlur}
+										placeholder={$i18n.t('Search users...')}
+										class="w-full px-2 py-1.5 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded"
+									/>
+									{#if loadingUsers}
+										<div class="absolute right-2 top-1/2 -translate-y-1/2">
+											<Spinner className="size-4" />
+										</div>
+									{/if}
+
+									<!-- Dropdown -->
+									{#if showUserDropdown && userSearchResults.length > 0}
+										<div class="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded shadow-lg z-10 max-h-48 overflow-y-auto">
+											{#each userSearchResults as user}
+												<button
+													type="button"
+													class="w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center gap-2"
+													on:mousedown|preventDefault={() => selectUser(user)}
+												>
+													<div class="size-6 rounded-full bg-gray-300 dark:bg-gray-500 flex items-center justify-center text-xs font-medium text-gray-700 dark:text-gray-200">
+														{user.name.charAt(0).toUpperCase()}
+													</div>
+													<div class="flex-1 min-w-0">
+														<div class="text-sm font-medium text-gray-900 dark:text-white truncate">{user.name}</div>
+														<div class="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</div>
+													</div>
+												</button>
+											{/each}
+										</div>
+									{:else if showUserDropdown && !loadingUsers && userSearchQuery.length > 0}
+										<div class="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded shadow-lg z-10 p-3 text-sm text-gray-500 dark:text-gray-400">
+											{$i18n.t('No users found')}
+										</div>
+									{/if}
+								</div>
+
+								<!-- Selected User Display -->
+								{#if selectedUser}
+									<div class="flex items-center gap-2 px-2 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded text-sm">
+										<div class="size-5 rounded-full bg-blue-500 flex items-center justify-center text-xs font-medium text-white">
+											{selectedUser.name.charAt(0).toUpperCase()}
+										</div>
+										<span class="flex-1 text-blue-700 dark:text-blue-300">{selectedUser.name}</span>
+										<button
+											type="button"
+											class="text-blue-500 hover:text-blue-700"
+											on:click={() => {
+												selectedUser = null;
+												newCollaboratorId = '';
+												userSearchQuery = '';
+											}}
+										>
+											<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12" />
+											</svg>
+										</button>
+									</div>
+								{/if}
+
 								<select
 									bind:value={newCollaboratorRole}
 									class="w-full px-2 py-1.5 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded"
@@ -674,14 +951,20 @@
 								</select>
 								<div class="flex gap-2">
 									<button
-										class="flex-1 px-2 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+										class="flex-1 px-2 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
 										on:click={handleAddCollaborator}
+										disabled={!selectedUser}
 									>
 										{$i18n.t('Add')}
 									</button>
 									<button
 										class="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition"
-										on:click={() => (showAddCollaborator = false)}
+										on:click={() => {
+											showAddCollaborator = false;
+											selectedUser = null;
+											newCollaboratorId = '';
+											userSearchQuery = '';
+										}}
 									>
 										{$i18n.t('Cancel')}
 									</button>

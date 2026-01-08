@@ -1,0 +1,73 @@
+# docker-compose.dev.yaml
+# Development mode - mounts local build for hot-reload-like experience
+#
+# Usage:
+#   1. In terminal 1: npm run build:watch
+#   2. In terminal 2: docker compose -f docker-compose.dev.yaml up
+#
+# Changes to Svelte components rebuild automatically and are served immediately.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pelian-postgres-dev
+    environment:
+      - POSTGRES_USER=openwebui
+      - POSTGRES_PASSWORD=openwebui
+      - POSTGRES_DB=openwebui
+    volumes:
+      - pelian-postgres-data:/var/lib/postgresql/data
+    networks:
+      - pelian-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openwebui -d openwebui"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  open-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - USE_SLIM=true
+    image: pelian-open-webui:dev
+    container_name: pelian-open-webui-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.aiden
+    volumes:
+      - pelian-webui-data:/app/backend/data
+      # Mount local build output for rapid iteration
+      - ./build:/app/build:ro
+    ports:
+      - "3001:8080"
+    environment:
+      - "DATABASE_URL=postgresql://openwebui:openwebui@postgres:5432/openwebui"
+      - "WEBUI_SECRET_KEY=pelian-dev-secret"
+      - "OLLAMA_BASE_URL=http://host.docker.internal:8080"
+      - "AIDEN_API_BASE_URL=http://host.docker.internal:8500"
+      - "ENABLE_SIGNUP=true"
+      - "ENABLE_ADMIN_EXPORT=true"
+      - "AIOHTTP_CLIENT_SESSION_SSL=false"
+      - "CORS_ALLOW_ORIGIN=*"
+      - "FORWARDED_ALLOW_IPS=*"
+      - "SCARF_NO_ANALYTICS=true"
+      - "DO_NOT_TRACK=true"
+      - "ANONYMIZED_TELEMETRY=false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - pelian-net
+    restart: unless-stopped
+
+networks:
+  pelian-net:
+    driver: bridge
+
+volumes:
+  pelian-webui-data:
+  pelian-postgres-data:

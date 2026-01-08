@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount, onDestroy, getContext } from 'svelte';
 	import { goto } from '$app/navigation';
+	import DOMPurify from 'dompurify';
+	import { marked } from 'marked';
+	import { settings, config } from '$lib/stores';
 	import {
 		getJob,
 		getJobStatus,
@@ -10,15 +13,19 @@
 		cancelJob,
 		removeJob,
 		updateJob,
+		archiveJob,
+		unarchiveJob,
 		type Job,
 		type JobStatusResponse
 	} from '$lib/apis/jobs';
+	import { createNewChat } from '$lib/apis/chats';
 	import { toast } from 'svelte-sonner';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import JobStatusBadge from './JobStatusBadge.svelte';
 	import OrientationBreadcrumb from './OrientationBreadcrumb.svelte';
 	import OrientationPanel from './OrientationPanel.svelte';
 	import JobRightPanel from './JobRightPanel.svelte';
+	import ConversationMenu from './ConversationMenu.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -43,6 +50,19 @@
 	let editingSummaryValue = '';
 	let savingName = false;
 	let savingSummary = false;
+
+	// Summary expansion
+	let summaryExpanded = false;
+	const SUMMARY_PREVIEW_LENGTH = 500; // ~4-5 lines
+
+	function getSummaryPreview(summary: string): string {
+		if (summary.length <= SUMMARY_PREVIEW_LENGTH) return summary;
+		return summary.slice(0, SUMMARY_PREVIEW_LENGTH).trim() + '...';
+	}
+
+	function shouldShowExpandButton(summary: string | null): boolean {
+		return !!summary && summary.length > SUMMARY_PREVIEW_LENGTH;
+	}
 
 	async function loadJob() {
 		loading = true;
@@ -198,6 +218,69 @@
 			goto('/jobs');
 		} catch (e) {
 			toast.error($i18n.t('Failed to remove job'));
+		}
+	}
+
+	async function handleArchive() {
+		if (!job) return;
+
+		try {
+			if (job.archived) {
+				await unarchiveJob(localStorage.token, jobId);
+				job.archived = false;
+				toast.success($i18n.t('Job unarchived'));
+			} else {
+				await archiveJob(localStorage.token, jobId);
+				job.archived = true;
+				toast.success($i18n.t('Job archived'));
+			}
+		} catch (e) {
+			toast.error($i18n.t(job.archived ? 'Failed to unarchive job' : 'Failed to archive job'));
+		}
+	}
+
+	async function startNewChat(initialMessage: string) {
+		if (!job) return;
+
+		try {
+			// Get user's default model or config default
+			const defaultModels = $settings?.models ??
+				($config?.default_models ? $config.default_models.split(',') : ['']);
+
+			// Create a new chat associated with this job
+			const chatId = crypto.randomUUID();
+			const chat = await createNewChat(
+				localStorage.token,
+				{
+					id: chatId,
+					title: job.name,
+					models: defaultModels,
+					history: {
+						currentId: null,
+						messages: {}
+					},
+					messages: [],
+					tags: [],
+					timestamp: Date.now()
+				},
+				null, // No folder
+				jobId // Associate with this job
+			);
+
+			if (chat) {
+				// Store the initial message to be sent after navigation
+				localStorage.setItem('pendingMessage', JSON.stringify({
+					chatId: chat.id,
+					message: initialMessage,
+					jobId: jobId
+				}));
+
+				// Navigate to the new chat
+				goto(`/c/${chat.id}`);
+			}
+		} catch (e) {
+			console.error('Failed to create chat:', e);
+			toast.error($i18n.t('Failed to start conversation'));
 		}
 	}
 
@@ -364,6 +447,22 @@
 
 						{#if ['COMPLETED', 'FAILED', 'CANCELLED'].includes(job.status.toUpperCase())}
 							<button
+								class="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition flex items-center gap-1.5"
+								on:click={handleArchive}
+							>
+								{#if job.archived}
+									<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+									</svg>
+									{$i18n.t('Unarchive')}
+								{:else}
+									<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+									</svg>
+									{$i18n.t('Archive')}
+								{/if}
+							</button>
+							<button
 								class="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
 								on:click={handleRemove}
 							>
@@ -392,16 +491,17 @@
 
 			<!-- Job Content -->
 			<div class="flex-1 overflow-y-auto p-6">
-				<!-- Summary (Editable) -->
+				<!-- Description (Editable) -->
 				<div class="mb-6">
 					<div class="flex items-center justify-between mb-2">
 						<h2 class="text-sm font-medium text-gray-500 dark:text-gray-400">
-							{$i18n.t('Summary')}
+							{$i18n.t('Description')}
 						</h2>
 						{#if !editingSummary}
 							<button
 								class="p-1 text-gray-400 hover:text-blue-500 transition"
 								on:click={startEditSummary}
+								title={$i18n.t('Edit description')}
 							>
 								<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
@@ -414,70 +514,121 @@
 						<div class="space-y-2">
 							<textarea
 								bind:value={editingSummaryValue}
-								rows="3"
-								class="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-								placeholder={$i18n.t('Add a summary for this job...')}
+								rows="8"
+								class="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[120px]"
+								placeholder={$i18n.t('Describe the goal, context, requirements, and success criteria for this job...')}
 								on:keydown={(e) => {
 									if (e.key === 'Escape') cancelSummaryEdit();
 								}}
 							></textarea>
-							<div class="flex justify-end gap-2">
-								<button
-									class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
-									on:click={cancelSummaryEdit}
-								>
-									{$i18n.t('Cancel')}
-								</button>
-								<button
-									class="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition disabled:opacity-50"
-									on:click={saveSummaryEdit}
-									disabled={savingSummary}
-								>
-									{#if savingSummary}
-										<Spinner className="size-4" />
-									{:else}
-										{$i18n.t('Save')}
-									{/if}
-								</button>
+							<div class="flex items-center justify-between">
+								<span class="text-xs text-gray-400">
+									{editingSummaryValue.length.toLocaleString()} {$i18n.t('characters')}
+								</span>
+								<div class="flex gap-2">
+									<button
+										class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
+										on:click={cancelSummaryEdit}
+									>
+										{$i18n.t('Cancel')}
+									</button>
+									<button
+										class="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition disabled:opacity-50"
+										on:click={saveSummaryEdit}
+										disabled={savingSummary}
+									>
+										{#if savingSummary}
+											<Spinner className="size-4" />
+										{:else}
+											{$i18n.t('Save')}
+										{/if}
+									</button>
+								</div>
 							</div>
 						</div>
 					{:else if job.summary}
-						<p class="text-gray-900 dark:text-white">{job.summary}</p>
+						<div>
+							<div class="prose prose-sm dark:prose-invert max-w-none text-gray-900 dark:text-white leading-relaxed">
+								{@html marked.parse(DOMPurify.sanitize(summaryExpanded ? job.summary : getSummaryPreview(job.summary)))}
+							</div>
+							{#if shouldShowExpandButton(job.summary)}
+								<button
+									class="mt-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition"
+									on:click={() => (summaryExpanded = !summaryExpanded)}
+								>
+									{summaryExpanded ? $i18n.t('Show less') : $i18n.t('Show more')}
+								</button>
+							{/if}
+						</div>
 					{:else}
 						<button
 							class="text-sm text-gray-400 hover:text-blue-500 transition italic"
 							on:click={startEditSummary}
 						>
-							{$i18n.t('Click to add a summary...')}
+							{$i18n.t('Click to add a description...')}
 						</button>
 					{/if}
 				</div>
 
 				<!-- Conversations Section (Claude Projects-style) -->
 				<div class="mb-6">
-					<!-- Chat Input -->
+					<!-- Chat Input - Matches main MessageInput styling -->
 					<div class="mb-4">
-						<div class="relative">
-							<input
-								type="text"
-								placeholder={$i18n.t('Start a new conversation...')}
-								class="w-full px-4 py-3 pr-12 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-								on:keydown={(e) => {
-									if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-										// TODO: Create new conversation
-										console.log('New conversation:', e.currentTarget.value);
-										e.currentTarget.value = '';
-									}
-								}}
-							/>
-							<button
-								class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-blue-500 transition"
+						<form
+							class="w-full flex flex-col gap-1.5"
+							on:submit|preventDefault={(e) => {
+								const input = e.currentTarget.querySelector('textarea');
+								if (input && input.value.trim()) {
+									const message = input.value.trim();
+									startNewChat(message);
+									input.value = '';
+								}
+							}}
+						>
+							<div
+								class="flex-1 flex flex-col relative w-full shadow-lg rounded-3xl border border-gray-100/30 dark:border-gray-850/30 hover:border-gray-200 focus-within:border-gray-100 hover:dark:border-gray-800 focus-within:dark:border-gray-800 transition px-1 bg-white/5 dark:bg-gray-500/5 backdrop-blur-sm dark:text-gray-100"
 							>
-								<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-								</svg>
-							</button>
-						</div>
+								<!-- Text input area -->
+								<div class="px-2.5">
+									<div class="scrollbar-hidden text-left bg-transparent dark:text-gray-100 outline-hidden w-full pb-1 px-1 resize-none h-fit max-h-96 overflow-auto pt-2.5">
+										<textarea
+											id="job-chat-input"
+											class="w-full bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 border-none resize-none focus:outline-none focus:ring-0 text-sm min-h-[80px]"
+											placeholder={$i18n.t('How can I help with this job?')}
+											on:input={(e) => {
+												// Auto-resize textarea
+												e.currentTarget.style.height = 'auto';
+												e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 384) + 'px';
+											}}
+											on:keydown={(e) => {
+												if (e.key === 'Enter' && !e.shiftKey) {
+													e.preventDefault();
+													e.currentTarget.closest('form')?.requestSubmit();
+												}
+											}}
+										></textarea>
+									</div>
+								</div>
+
+								<!-- Bottom row with send button -->
+								<div class="flex justify-between mt-0.5 mb-2.5 mx-0.5 max-w-full" dir="ltr">
+									<div class="ml-1 self-end flex items-center flex-1">
+										<!-- Placeholder for future attachment button -->
+									</div>
+									<div class="mr-1 self-end flex items-center">
+										<button
+											type="submit"
+											class="bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full p-1.5 self-center"
+											aria-label={$i18n.t('Send message')}
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="size-5">
+												<path fill-rule="evenodd" d="M8 14a.75.75 0 0 1-.75-.75V4.56L4.03 7.78a.75.75 0 0 1-1.06-1.06l4.5-4.5a.75.75 0 0 1 1.06 0l4.5 4.5a.75.75 0 0 1-1.06 1.06L8.75 4.56v8.69A.75.75 0 0 1 8 14Z" clip-rule="evenodd" />
+											</svg>
+										</button>
+									</div>
+								</div>
+							</div>
+						</form>
 					</div>
 
 					<!-- Conversations List -->
@@ -507,16 +658,34 @@
 												{conversation.last_message_at ? formatDate(conversation.last_message_at) : 'No messages yet'}
 											</div>
 										</div>
-										<button
-											class="p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
-											on:click|stopPropagation={() => {
-												// TODO: Conversation options menu
-											}}
-										>
-											<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-											</svg>
-										</button>
+										<div on:click|stopPropagation={() => {}}>
+											<ConversationMenu
+												conversationId={conversation.id}
+												starred={false}
+												on:star={(e) => {
+													// TODO: Toggle star status
+													console.log('Star conversation:', e.detail);
+													toast.success($i18n.t('Conversation starred'));
+												}}
+												on:rename={(e) => {
+													// TODO: Open rename dialog
+													console.log('Rename conversation:', e.detail);
+												}}
+												on:delete={(e) => {
+													// TODO: Delete conversation with confirmation
+													console.log('Delete conversation:', e.detail);
+												}}
+											>
+												<button
+													class="p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+													aria-label={$i18n.t('Conversation options')}
+												>
+													<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+													</svg>
+												</button>
+											</ConversationMenu>
+										</div>
 									</div>
 								</div>
 							{/each}
