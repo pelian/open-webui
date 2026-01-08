@@ -4,6 +4,13 @@
 
 import { AIDEN_API_BASE_URL } from '$lib/constants';
 
+export interface JobConversation {
+	id: string;
+	title: string | null;
+	last_message_at: string | null;
+	message_count: number;
+}
+
 export interface Job {
 	job_id: string;
 	name: string;
@@ -19,6 +26,7 @@ export interface Job {
 	created_at: string;
 	updated_at: string;
 	orientation_chips: OrientationChip[];
+	conversations?: JobConversation[];
 }
 
 export interface OrientationChip {

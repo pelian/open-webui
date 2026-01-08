@@ -270,42 +270,83 @@
 					</div>
 				{/if}
 
-				<!-- Metadata -->
-				<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-					<div>
-						<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-							{$i18n.t('Owner')}
-						</div>
-						<div class="text-sm text-gray-900 dark:text-white">
-							{job.owner_subject_id || '-'}
+				<!-- Conversations Section (Claude Projects-style) -->
+				<div class="mb-6">
+					<!-- Chat Input -->
+					<div class="mb-4">
+						<div class="relative">
+							<input
+								type="text"
+								placeholder={$i18n.t('Start a new conversation...')}
+								class="w-full px-4 py-3 pr-12 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+								on:keydown={(e) => {
+									if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+										// TODO: Create new conversation
+										console.log('New conversation:', e.currentTarget.value);
+										e.currentTarget.value = '';
+									}
+								}}
+							/>
+							<button
+								class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-blue-500 transition"
+							>
+								<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+								</svg>
+							</button>
 						</div>
 					</div>
-					<div>
-						<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-							{$i18n.t('Persona')}
-						</div>
-						<div class="text-sm text-gray-900 dark:text-white">
-							{job.persona_id || 'aiden'}
-						</div>
-					</div>
-					<div>
-						<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-							{$i18n.t('Workspace')}
-						</div>
-						<div class="text-sm text-gray-900 dark:text-white">
-							{job.workspace_id || '-'}
-						</div>
+
+					<!-- Conversations List -->
+					<div class="space-y-2">
+						{#if job.conversations && job.conversations.length > 0}
+							{#each job.conversations as conversation}
+								<button
+									class="w-full text-left p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition group"
+									on:click={() => {
+										// TODO: Open conversation
+										console.log('Open conversation:', conversation.id);
+									}}
+								>
+									<div class="flex items-start justify-between">
+										<div class="flex-1 min-w-0">
+											<div class="text-sm font-medium text-gray-900 dark:text-white truncate">
+												{conversation.title || 'Untitled conversation'}
+											</div>
+											<div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+												{conversation.last_message_at ? formatDate(conversation.last_message_at) : 'No messages yet'}
+											</div>
+										</div>
+										<button
+											class="p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+											on:click|stopPropagation={() => {
+												// TODO: Conversation options menu
+											}}
+										>
+											<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+											</svg>
+										</button>
+									</div>
+								</button>
+							{/each}
+						{:else}
+							<div class="text-center py-8 text-gray-500 dark:text-gray-400">
+								<svg class="size-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+								</svg>
+								<p class="text-sm">{$i18n.t('No conversations yet')}</p>
+								<p class="text-xs mt-1">{$i18n.t('Start a conversation above to work on this job')}</p>
+							</div>
+						{/if}
 					</div>
 				</div>
 
-				<!-- Timestamps -->
-				<div class="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-					<div>
-						{$i18n.t('Created')}: {formatDate(job.created_at)}
-					</div>
-					<div>
-						{$i18n.t('Updated')}: {formatDate(job.updated_at)}
-					</div>
+				<!-- Timestamps (collapsed to footer) -->
+				<div class="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+					<span>{$i18n.t('Created')} {formatDate(job.created_at)}</span>
+					<span>·</span>
+					<span>{$i18n.t('Updated')} {formatDate(job.updated_at)}</span>
 				</div>
 
 				</div>

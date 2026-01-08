@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher, getContext } from 'svelte';
+	import { createEventDispatcher, getContext, onMount } from 'svelte';
 	import {
 		type Job,
 		type PendingDecision,
@@ -21,6 +21,9 @@
 	const dispatch = createEventDispatcher();
 
 	export let job: Job;
+
+	// Track job_id to prevent reloading on every job mutation
+	let loadedJobId: string | null = null;
 
 	// Section collapse states
 	let statusCollapsed = false;
@@ -173,11 +176,22 @@
 		return option?.label || 'Supervised';
 	}
 
-	// Load data on mount
-	$: if (job) {
-		loadDecisions();
-		loadActivity();
-		loadCollaborators();
+	// Load data only when job_id changes (not on every job mutation)
+	async function loadAllData() {
+		if (job && job.job_id !== loadedJobId) {
+			loadedJobId = job.job_id;
+			await Promise.all([loadDecisions(), loadActivity(), loadCollaborators()]);
+		}
+	}
+
+	// Initial load on mount
+	onMount(() => {
+		loadAllData();
+	});
+
+	// Reload when job_id changes
+	$: if (job?.job_id && job.job_id !== loadedJobId) {
+		loadAllData();
 	}
 </script>
 
