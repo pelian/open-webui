@@ -163,6 +163,100 @@ async def permanent_delete_job(request: Request, job_id: str, user=Depends(get_c
     return await proxy_request(request, f"jobs/{job_id}/permanent", "DELETE", user)
 
 
+@router.post("/jobs/{job_id}/start")
+async def start_job(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Start a queued job."""
+    return await proxy_request(request, f"jobs/{job_id}/start", "POST", user)
+
+
+@router.patch("/jobs/{job_id}/autonomy")
+async def update_job_autonomy(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Update job autonomy level."""
+    return await proxy_request(request, f"jobs/{job_id}/autonomy", "PATCH", user)
+
+
+# ============================================================================
+# Job Collaborators
+# ============================================================================
+
+@router.get("/jobs/{job_id}/collaborators")
+async def get_job_collaborators(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Get job collaborators."""
+    return await proxy_request(request, f"jobs/{job_id}/collaborators", "GET", user)
+
+
+@router.post("/jobs/{job_id}/collaborators")
+async def add_job_collaborator(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Add a collaborator to a job."""
+    return await proxy_request(request, f"jobs/{job_id}/collaborators", "POST", user)
+
+
+@router.delete("/jobs/{job_id}/collaborators/{user_id}")
+async def remove_job_collaborator(
+    request: Request, job_id: str, user_id: str, user=Depends(get_current_user)
+):
+    """Remove a collaborator from a job."""
+    return await proxy_request(request, f"jobs/{job_id}/collaborators/{user_id}", "DELETE", user)
+
+
+# ============================================================================
+# Job Decisions
+# ============================================================================
+
+@router.get("/jobs/{job_id}/decisions")
+async def get_job_decisions(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Get pending and completed decisions for a job."""
+    return await proxy_request(request, f"jobs/{job_id}/decisions", "GET", user)
+
+
+@router.post("/jobs/{job_id}/decisions")
+async def request_job_decision(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Request a decision from the user."""
+    return await proxy_request(request, f"jobs/{job_id}/decisions", "POST", user)
+
+
+@router.post("/jobs/{job_id}/decisions/{decision_id}")
+async def submit_job_decision(
+    request: Request, job_id: str, decision_id: str, user=Depends(get_current_user)
+):
+    """Submit a decision response."""
+    return await proxy_request(request, f"jobs/{job_id}/decisions/{decision_id}", "POST", user)
+
+
+# ============================================================================
+# Job Activity
+# ============================================================================
+
+@router.get("/jobs/{job_id}/activity")
+async def get_job_activity(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Get activity log for a job."""
+    return await proxy_request(request, f"jobs/{job_id}/activity", "GET", user)
+
+
+# ============================================================================
+# Job Files
+# ============================================================================
+
+@router.get("/jobs/{job_id}/files")
+async def get_job_files(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Get files attached to a job."""
+    return await proxy_request(request, f"jobs/{job_id}/files", "GET", user)
+
+
+@router.post("/jobs/{job_id}/files")
+async def upload_job_file(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Upload a file to a job."""
+    return await proxy_request(request, f"jobs/{job_id}/files", "POST", user)
+
+
+@router.delete("/jobs/{job_id}/files/{file_id}")
+async def delete_job_file(
+    request: Request, job_id: str, file_id: str, user=Depends(get_current_user)
+):
+    """Delete a file from a job."""
+    return await proxy_request(request, f"jobs/{job_id}/files/{file_id}", "DELETE", user)
+
+
 # ============================================================================
 # Conversation-Job Binding
 # ============================================================================
