@@ -323,10 +323,48 @@ export async function cancelJob(token: string, jobId: string): Promise<void> {
 }
 
 /**
- * Remove a job completely from the queue
+ * Move a job to trash (soft delete)
+ * Jobs in trash can be restored or permanently deleted.
  */
 export async function removeJob(token: string, jobId: string): Promise<void> {
-	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}?remove=true`, {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/trash`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || `Failed to trash job: ${response.statusText}`);
+	}
+}
+
+/**
+ * Restore a job from trash
+ */
+export async function restoreJob(token: string, jobId: string): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/restore`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || `Failed to restore job: ${response.statusText}`);
+	}
+}
+
+/**
+ * Permanently delete a job (irreversible)
+ * Admin only for hard_delete=true
+ */
+export async function permanentlyDeleteJob(token: string, jobId: string, hardDelete: boolean = false): Promise<void> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/jobs/${jobId}/permanent?hard_delete=${hardDelete}`, {
 		method: 'DELETE',
 		headers: {
 			Authorization: `Bearer ${token}`,
@@ -335,7 +373,8 @@ export async function removeJob(token: string, jobId: string): Promise<void> {
 	});
 
 	if (!response.ok) {
-		throw new Error(`Failed to remove job: ${response.statusText}`);
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || `Failed to delete job: ${response.statusText}`);
 	}
 }
 

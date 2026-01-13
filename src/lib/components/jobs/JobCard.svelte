@@ -10,6 +10,7 @@
 	const dispatch = createEventDispatcher();
 
 	export let job: JobListItem;
+	export let inTrash = false;
 
 	function formatRelativeTime(dateString: string): string {
 		const date = new Date(dateString);
@@ -72,10 +73,13 @@
 				jobId={job.job_id}
 				starred={job.starred ?? false}
 				archived={job.archived ?? false}
+				{inTrash}
 				on:star={(e) => dispatch('star', e.detail)}
 				on:edit={(e) => dispatch('edit', e.detail)}
 				on:archive={(e) => dispatch('archive', e.detail)}
 				on:delete={(e) => dispatch('delete', e.detail)}
+				on:restore={(e) => dispatch('restore', e.detail)}
+				on:permanentDelete={(e) => dispatch('permanentDelete', e.detail)}
 			>
 				<button
 					class="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"

@@ -14,6 +14,7 @@
 	export let jobId: string;
 	export let starred = false;
 	export let archived = false;
+	export let inTrash = false;
 
 	export let show = false;
 	export let className = 'max-w-[180px]';
@@ -61,14 +62,35 @@
 			<div class="flex items-center">{archived ? $i18n.t('Unarchive') : $i18n.t('Archive')}</div>
 		</DropdownMenu.Item>
 
-		<DropdownMenu.Item
-			class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl"
-			on:click={() => {
-				dispatch('delete', { jobId });
-			}}
-		>
-			<GarbageBin className="size-4" />
-			<div class="flex items-center">{$i18n.t('Delete')}</div>
-		</DropdownMenu.Item>
+		{#if inTrash}
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-xl"
+				on:click={() => {
+					dispatch('restore', { jobId });
+				}}
+			>
+				<ArchiveBox className="size-4" />
+				<div class="flex items-center">{$i18n.t('Restore')}</div>
+			</DropdownMenu.Item>
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl"
+				on:click={() => {
+					dispatch('permanentDelete', { jobId });
+				}}
+			>
+				<GarbageBin className="size-4" />
+				<div class="flex items-center">{$i18n.t('Delete permanently')}</div>
+			</DropdownMenu.Item>
+		{:else}
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl"
+				on:click={() => {
+					dispatch('delete', { jobId });
+				}}
+			>
+				<GarbageBin className="size-4" />
+				<div class="flex items-center">{$i18n.t('Delete')}</div>
+			</DropdownMenu.Item>
+		{/if}
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

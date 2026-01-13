@@ -2,7 +2,7 @@
 	import { onMount, getContext } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
-	import { getJobs, archiveJob, unarchiveJob, removeJob, type JobListItem, type JobListResponse } from '$lib/apis/jobs';
+	import { getJobs, archiveJob, unarchiveJob, removeJob, restoreJob, permanentlyDeleteJob, type JobListItem, type JobListResponse } from '$lib/apis/jobs';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Plus from '$lib/components/icons/Plus.svelte';
@@ -13,6 +13,7 @@
 
 	// Delete confirmation
 	let showDeleteConfirm = false;
+	let showPermanentDeleteConfirm = false;
 	let selectedJobId: string | null = null;
 	let selectedJobName: string = '';
 
@@ -43,7 +44,7 @@
 	let error: string | null = null;
 
 	// Quick filter buttons
-	let quickFilter: 'all' | 'my' | 'shared' | 'active' | 'waiting' | 'archived' = 'all';
+	let quickFilter: 'all' | 'my' | 'shared' | 'active' | 'waiting' | 'archived' | 'trash' = 'all';
 
 	// Debounce timer for search
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -69,11 +70,16 @@
 				params.status = 'WAITING_ON_USER';
 			} else if (quickFilter === 'archived') {
 				params.archived = 'true';
+			} else if (quickFilter === 'trash') {
+				params.lifecycle_status = 'removed';
 			}
 
-			// By default, exclude archived jobs unless viewing archived filter
+			// By default, exclude archived and trashed jobs unless viewing those filters
 			if (quickFilter !== 'archived') {
 				params.archived = 'false';
+			}
+			if (quickFilter !== 'trash') {
+				params.lifecycle_status = 'active';
 			}
 
 			// Apply search query
@@ -162,12 +168,44 @@
 		if (!selectedJobId) return;
 		try {
 			await removeJob(localStorage.token, selectedJobId);
-			toast.success($i18n.t('Job deleted'));
+			toast.success($i18n.t('Job moved to trash'));
 			loadJobs();
 		} catch (e) {
 			toast.error($i18n.t('Failed to delete job'));
 		}
 		showDeleteConfirm = false;
+		selectedJobId = null;
+	}
+
+	async function handleRestore(event: CustomEvent<{ jobId: string }>) {
+		const { jobId } = event.detail;
+		try {
+			await restoreJob(localStorage.token, jobId);
+			toast.success($i18n.t('Job restored'));
+			loadJobs();
+		} catch (e) {
+			toast.error($i18n.t('Failed to restore job'));
+		}
+	}
+
+	function handlePermanentDelete(event: CustomEvent<{ jobId: string }>) {
+		const { jobId } = event.detail;
+		const job = jobs.find(j => j.job_id === jobId);
+		selectedJobId = jobId;
+		selectedJobName = job?.name ?? 'this job';
+		showPermanentDeleteConfirm = true;
+	}
+
+	async function confirmPermanentDelete() {
+		if (!selectedJobId) return;
+		try {
+			await permanentlyDeleteJob(localStorage.token, selectedJobId, true);
+			toast.success($i18n.t('Job permanently deleted'));
+			loadJobs();
+		} catch (e) {
+			toast.error($i18n.t('Failed to permanently delete job'));
+		}
+		showPermanentDeleteConfirm = false;
 		selectedJobId = null;
 	}
 
@@ -195,11 +233,21 @@
 
 <ConfirmDialog
 	bind:show={showDeleteConfirm}
-	title={$i18n.t('Delete job?')}
+	title={$i18n.t('Move to trash?')}
 	on:confirm={confirmDelete}
 >
 	<div class="text-sm text-gray-500 truncate">
-		{$i18n.t('This will delete')} <span class="font-semibold">{selectedJobName}</span>.
+		{$i18n.t('Move')} <span class="font-semibold">{selectedJobName}</span> {$i18n.t('to trash. You can restore it later.')}.
+	</div>
+</ConfirmDialog>
+
+<ConfirmDialog
+	bind:show={showPermanentDeleteConfirm}
+	title={$i18n.t('Permanently delete job?')}
+	on:confirm={confirmPermanentDelete}
+>
+	<div class="text-sm text-gray-500 truncate">
+		{$i18n.t('This will permanently delete')} <span class="font-semibold">{selectedJobName}</span>. {$i18n.t('This action cannot be undone.')}.
 	</div>
 </ConfirmDialog>
 
@@ -303,6 +351,14 @@
 					>
 						{$i18n.t('Archived')}
 					</button>
+					<button
+						class="px-3 py-1.5 rounded-xl text-sm transition {quickFilter === 'trash'
+							? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
+							: 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-850'}"
+						on:click={() => handleQuickFilter('trash')}
+					>
+						{$i18n.t('Trash')}
+					</button>
 				</div>
 			</div>
 
@@ -363,10 +419,18 @@
 			<div class="w-full h-full flex flex-col items-center justify-center">
 				<div class="py-20 text-center">
 					<div class="text-sm text-gray-400 dark:text-gray-600">
-						{$i18n.t('No Jobs')}
+						{#if quickFilter === 'trash'}
+							{$i18n.t('Trash is empty')}
+						{:else}
+							{$i18n.t('No Jobs')}
+						{/if}
 					</div>
 					<div class="mt-1 text-xs text-gray-300 dark:text-gray-700">
-						{$i18n.t('Create your first job by clicking on the + New Job button above.')}
+						{#if quickFilter === 'trash'}
+							{$i18n.t('Deleted jobs will appear here.')}
+						{:else}
+							{$i18n.t('Create your first job by clicking on the + New Job button above.')}
+						{/if}
 					</div>
 				</div>
 			</div>
@@ -375,11 +439,14 @@
 				{#each jobs as job (job.job_id)}
 					<JobCard
 						{job}
+						inTrash={quickFilter === 'trash'}
 						on:click={(e) => handleJobClick(e.detail.jobId)}
 						on:star={handleStar}
 						on:edit={handleEdit}
 						on:archive={handleArchive}
 						on:delete={handleDelete}
+						on:restore={handleRestore}
+						on:permanentDelete={handlePermanentDelete}
 					/>
 				{/each}
 			</div>
