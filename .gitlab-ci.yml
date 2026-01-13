@@ -1,0 +1,8 @@
+# GitLab CI/CD Pipeline for Pelian Open WebUI
+# Sync is handled by pelian-sync-antenna service via Valkey pub/sub
+
+# Disable Auto DevOps - we use manual deployment
+include: []
+
+# No automated CI jobs - deployment is manual via docker-compose
+# To rebuild on aiden: ssh aiden "cd ~/dev/pelian-open-webui && docker compose -f docker-compose.aiden.yaml build && docker compose -f docker-compose.aiden.yaml up -d"
