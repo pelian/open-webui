@@ -1,0 +1,31 @@
+# pelian-sync-antenna.service
+# Systemd service for Pelian Open WebUI sync antenna
+#
+# Install on aiden:
+#   sudo cp deploy/pelian-sync-antenna.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pelian-sync-antenna
+#
+# View logs:
+#   journalctl -u pelian-sync-antenna -f
+
+[Unit]
+Description=Pelian Open WebUI Sync Antenna
+After=network.target redis.service valkey.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=joseph
+WorkingDirectory=/home/joseph/dev/pelian-open-webui
+ExecStart=/home/joseph/dev/pelian-open-webui/.sync/sync-antenna.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Optional: trigger Docker rebuild after sync
+# Environment=PELIAN_REBUILD_WEBHOOK=http://localhost:8001/api/hooks/rebuild
+
+[Install]
+WantedBy=multi-user.target
