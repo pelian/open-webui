@@ -305,19 +305,40 @@
 		}
 	}
 
-	function handleDragOver(e: DragEvent) {
+	function handleDragEnter(e: DragEvent) {
 		e.preventDefault();
-		draggingOver = true;
+		e.stopPropagation();
+		// Only set dragging if we have files
+		if (e.dataTransfer?.types?.includes('Files')) {
+			draggingOver = true;
+		}
 	}
 
-	function handleDragLeave() {
-		draggingOver = false;
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		// Keep dragging state active
+	}
+
+	function handleDragLeave(e: DragEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		// Only unset if actually leaving the drop zone (not entering child elements)
+		const relatedTarget = e.relatedTarget as Node | null;
+		const currentTarget = e.currentTarget as Node;
+		if (!relatedTarget || !currentTarget.contains(relatedTarget)) {
+			draggingOver = false;
+		}
 	}
 
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
+		e.stopPropagation();
 		draggingOver = false;
-		handleFileUpload(e.dataTransfer?.files ?? null);
+		const files = e.dataTransfer?.files;
+		if (files && files.length > 0) {
+			handleFileUpload(files);
+		}
 	}
 
 	function formatFileSize(bytes: number): string {
@@ -680,10 +701,12 @@
 					class="relative mb-3 p-4 border-2 border-dashed rounded-lg transition-colors {draggingOver
 						? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
 						: 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}"
+					on:dragenter={handleDragEnter}
 					on:dragover={handleDragOver}
 					on:dragleave={handleDragLeave}
 					on:drop={handleDrop}
-					role="button"
+					role="region"
+					aria-label={$i18n.t('File drop zone')}
 					tabindex="0"
 				>
 					<input

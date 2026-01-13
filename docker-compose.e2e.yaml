@@ -1,0 +1,34 @@
+# docker-compose.e2e.yaml
+# E2E Testing - Connects to production postgres on aiden via Tailscale
+#
+# Usage:
+#   1. Ensure Tailscale is connected: tailscale status | grep aiden
+#   2. In terminal 1: npm run build:watch
+#   3. In terminal 2: docker compose -f docker-compose.dev.yaml -f docker-compose.e2e.yaml up
+#
+# This override:
+#   - Disables local postgres (uses production on aiden)
+#   - Connects to Jobs API on aiden
+#   - Uses E2E environment file
+
+services:
+  # Disable local postgres - use production on aiden instead
+  postgres:
+    profiles:
+      - disabled
+
+  open-webui:
+    container_name: pelian-open-webui-e2e
+    depends_on: []  # Remove postgres dependency
+    env_file:
+      - .env.e2e
+    environment:
+      # Override to connect to aiden's postgres via Tailscale
+      - "DATABASE_URL=postgresql://openwebui:openwebui@aiden.neko-trench.ts.net:5432/openwebui"
+      # Jobs API on aiden
+      - "AIDEN_API_BASE_URL=http://aiden.neko-trench.ts.net:8099"
+      # Ollama on aiden
+      - "OLLAMA_BASE_URL=http://aiden.neko-trench.ts.net:8080"
+      # E2E specific
+      - "WEBUI_SECRET_KEY=pelian-e2e-test-key"
+      - "ENABLE_SIGNUP=false"

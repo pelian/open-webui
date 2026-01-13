@@ -786,3 +786,97 @@ export async function deleteJobFile(token: string, jobId: string, fileId: string
 		throw new Error(`Failed to delete file: ${response.statusText}`);
 	}
 }
+
+
+// ============================================================================
+// Pelian Update System
+// ============================================================================
+
+export interface PelianVersionStatus {
+	current_version: string;
+	latest_upstream: string;
+	release_url: string;
+	release_date: string;
+	commits_behind: number;
+	commits_ahead: number;
+	update_available: boolean;
+	git_available: boolean;
+	fork: string;
+	checked_at: string;
+}
+
+export interface PelianUpdateResult {
+	status: 'success' | 'error' | 'not_configured' | 'triggered';
+	message: string;
+	output?: string;
+	error?: string;
+	next_steps?: string[];
+	manual_steps?: string[];
+	rollback?: string;
+	webhook_response?: string;
+}
+
+/**
+ * Get Pelian fork version status
+ */
+export async function getPelianVersionStatus(token: string): Promise<PelianVersionStatus> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/pelian/version`, {
+		method: 'GET',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to get version status: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Prepare a Pelian update by merging upstream changes
+ */
+export async function preparePelianUpdate(
+	token: string,
+	targetVersion?: string
+): Promise<PelianUpdateResult> {
+	const url = new URL(`${AIDEN_API_BASE_URL}/pelian/update/prepare`);
+	if (targetVersion) {
+		url.searchParams.set('target_version', targetVersion);
+	}
+
+	const response = await fetch(url.toString(), {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to prepare update: ${response.statusText}`);
+	}
+
+	return response.json();
+}
+
+/**
+ * Trigger a Docker rebuild (if webhook is configured)
+ */
+export async function triggerPelianRebuild(token: string): Promise<PelianUpdateResult> {
+	const response = await fetch(`${AIDEN_API_BASE_URL}/pelian/update/rebuild`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to trigger rebuild: ${response.statusText}`);
+	}
+
+	return response.json();
+}

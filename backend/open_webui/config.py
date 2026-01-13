@@ -3291,6 +3291,12 @@ EXTERNAL_WEB_LOADER_API_KEY = PersistentConfig(
     os.environ.get("EXTERNAL_WEB_LOADER_API_KEY", ""),
 )
 
+VATICORE_URL = PersistentConfig(
+    "VATICORE_URL",
+    "rag.web.search.vaticore_url",
+    os.environ.get("VATICORE_URL", ""),
+)
+
 ####################################
 # Images
 ####################################

@@ -3,6 +3,13 @@
 
 	import { getVersionUpdates, getWebhookUrl, updateWebhookUrl } from '$lib/apis';
 	import {
+		getPelianVersionStatus,
+		preparePelianUpdate,
+		triggerPelianRebuild,
+		type PelianVersionStatus,
+		type PelianUpdateResult
+	} from '$lib/apis/jobs';
+	import {
 		getAdminConfig,
 		getLdapConfig,
 		getLdapServer,
@@ -30,6 +37,11 @@
 		current: '',
 		latest: ''
 	};
+
+	// Pelian Update System
+	let pelianVersion: PelianVersionStatus | null = null;
+	let pelianUpdateLoading = false;
+	let pelianUpdateResult: PelianUpdateResult | null = null;
 
 	let adminConfig = null;
 	let webhookUrl = '';
@@ -67,6 +79,52 @@
 		console.info(updateAvailable);
 	};
 
+	// Pelian Update Functions
+	const checkPelianVersion = async () => {
+		try {
+			pelianVersion = await getPelianVersionStatus(localStorage.token);
+		} catch (error) {
+			console.error('Failed to check Pelian version:', error);
+			toast.error('Failed to check Pelian version status');
+		}
+	};
+
+	const handlePelianUpdate = async (targetVersion?: string) => {
+		pelianUpdateLoading = true;
+		pelianUpdateResult = null;
+
+		try {
+			pelianUpdateResult = await preparePelianUpdate(localStorage.token, targetVersion);
+			if (pelianUpdateResult.status === 'success') {
+				toast.success('Update prepared successfully! See next steps below.');
+			} else {
+				toast.error(pelianUpdateResult.message);
+			}
+		} catch (error) {
+			console.error('Update failed:', error);
+			toast.error(`Update failed: ${error}`);
+		} finally {
+			pelianUpdateLoading = false;
+		}
+	};
+
+	const handlePelianRebuild = async () => {
+		try {
+			const result = await triggerPelianRebuild(localStorage.token);
+			if (result.status === 'triggered') {
+				toast.success('Rebuild triggered! Container will restart shortly.');
+			} else if (result.status === 'not_configured') {
+				toast.info('Rebuild webhook not configured. See manual steps.');
+				pelianUpdateResult = result;
+			} else {
+				toast.error(result.message);
+			}
+		} catch (error) {
+			console.error('Rebuild failed:', error);
+			toast.error(`Rebuild failed: ${error}`);
+		}
+	};
+
 	const updateLdapServerHandler = async () => {
 		if (!ENABLE_LDAP) return;
 		const res = await updateLdapServer(localStorage.token, LDAP_SERVER).catch((error) => {
@@ -95,6 +153,9 @@
 		if ($config?.features?.enable_version_update_check) {
 			checkForVersionUpdates();
 		}
+
+		// Check Pelian version status
+		checkPelianVersion();
 
 		await Promise.all([
 			(async () => {
@@ -280,6 +341,87 @@
 							>
 								{$i18n.t('Activate')}
 							</button> -->
+						</div>
+					</div>
+
+					<!-- Pelian Fork Update Section -->
+					<div class="mb-2.5">
+						<div class=" mb-1 text-xs font-medium flex space-x-2 items-center">
+							<div>Pelian Fork</div>
+						</div>
+						<div class="flex flex-col gap-2">
+							{#if pelianVersion}
+								<div class="flex w-full justify-between items-center">
+									<div class="flex flex-col text-xs text-gray-700 dark:text-gray-200">
+										<div class="flex gap-2 items-center">
+											<span>Current: v{pelianVersion.current_version}</span>
+											{#if pelianVersion.update_available}
+												<span class="text-yellow-600 dark:text-yellow-400">
+													(v{pelianVersion.latest_upstream} available)
+												</span>
+											{:else}
+												<span class="text-green-600 dark:text-green-400">(up to date)</span>
+											{/if}
+										</div>
+										{#if pelianVersion.git_available}
+											<div class="text-xs text-gray-500 mt-1">
+												{pelianVersion.commits_behind} commits behind · {pelianVersion.commits_ahead} commits ahead (customizations)
+											</div>
+										{/if}
+									</div>
+									<div class="flex gap-2">
+										<button
+											class="text-xs px-3 py-1.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 transition rounded-lg font-medium"
+											type="button"
+											on:click={checkPelianVersion}
+										>
+											Refresh
+										</button>
+										{#if pelianVersion.update_available}
+											<button
+												class="text-xs px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white transition rounded-lg font-medium disabled:opacity-50"
+												type="button"
+												disabled={pelianUpdateLoading}
+												on:click={() => handlePelianUpdate()}
+											>
+												{pelianUpdateLoading ? 'Preparing...' : 'Prepare Update'}
+											</button>
+										{/if}
+									</div>
+								</div>
+							{:else}
+								<div class="flex w-full justify-between items-center">
+									<div class="text-xs text-gray-500">Checking Pelian version...</div>
+									<button
+										class="text-xs px-3 py-1.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 transition rounded-lg font-medium"
+										type="button"
+										on:click={checkPelianVersion}
+									>
+										Check Version
+									</button>
+								</div>
+							{/if}
+
+							{#if pelianUpdateResult}
+								<div class="mt-2 p-3 rounded-lg text-xs {pelianUpdateResult.status === 'success' ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200' : pelianUpdateResult.status === 'not_configured' ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200' : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200'}">
+									<div class="font-medium mb-1">{pelianUpdateResult.message}</div>
+									{#if pelianUpdateResult.next_steps || pelianUpdateResult.manual_steps}
+										<div class="mt-2">
+											<div class="font-medium">Next steps:</div>
+											<ol class="list-decimal list-inside mt-1 space-y-1">
+												{#each pelianUpdateResult.next_steps || pelianUpdateResult.manual_steps || [] as step}
+													<li class="font-mono text-xs">{step}</li>
+												{/each}
+											</ol>
+										</div>
+									{/if}
+									{#if pelianUpdateResult.rollback}
+										<div class="mt-2 text-xs opacity-75">
+											Rollback: <code class="bg-gray-200 dark:bg-gray-700 px-1 rounded">{pelianUpdateResult.rollback}</code>
+										</div>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					</div>
 				</div>

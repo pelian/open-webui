@@ -133,33 +133,100 @@ Adds job management UI to the sidebar:
 
 ## Syncing with Upstream
 
-### 1. Fetch upstream changes
+### Automated Sync (Recommended)
+
+Use the sync script for safe, automated upgrades:
+
 ```bash
-git fetch upstream
+# Sync to a specific version (e.g., v0.7.2)
+./scripts/sync-upstream.sh v0.7.2
+
+# Sync to latest upstream/main
+./scripts/sync-upstream.sh
 ```
 
-### 2. Check what's new
+The script will:
+1. Create a backup branch before making changes
+2. Fetch upstream and merge the target version
+3. Auto-resolve conflicts using our customization strategy
+4. Verify Pelian customizations survived the merge
+5. Provide rollback instructions if something goes wrong
+
+### Manual Sync Process
+
+If you prefer manual control:
+
 ```bash
-git log main..upstream/main --oneline
-```
+# 1. Fetch upstream changes
+git fetch upstream --tags
 
-### 3. Merge or rebase
-```bash
-# Option A: Merge (preserves history, creates merge commit)
-git merge upstream/main
+# 2. Check what's new
+git log HEAD..upstream/main --oneline | head -20
+git log HEAD..v0.7.2 --oneline | head -20  # For specific version
 
-# Option B: Rebase (cleaner history, may require conflict resolution)
-git rebase upstream/main
-```
+# 3. Create backup branch
+git branch backup/pre-sync-$(date +%Y%m%d)
 
-### 4. Resolve conflicts
-If conflicts occur in customized files:
-- `src/lib/components/layout/Sidebar.svelte` - Re-add Jobs button
-- `src/lib/constants.ts` - Re-add `AIDEN_API_BASE_URL`
+# 4. Merge the target
+git merge v0.7.2  # or upstream/main
 
-### 5. Push to fork
-```bash
+# 5. Resolve conflicts (see strategy below)
+
+# 6. Push to fork
 git push origin main
+```
+
+### Conflict Resolution Strategy
+
+| File Category | Strategy | Reason |
+|--------------|----------|--------|
+| **Pelian-only files** | Keep OURS | Jobs, RTVI, Aiden configs |
+| **Modified core files** | Keep OURS, manually merge features | constants.ts, main.py |
+| **UI components** | Accept THEIRS, re-add our hooks | Sidebar.svelte |
+| **Dependencies** | Accept THEIRS, verify compat | package.json |
+| **Unmodified files** | Accept THEIRS | Upstream improvements |
+
+#### Files to Watch During Merge
+
+| File | Our Customization | Action |
+|------|-------------------|--------|
+| `src/lib/constants.ts` | `AIDEN_API_BASE_URL` | Ensure constant is preserved |
+| `src/lib/stores/index.ts` | `jobs` store export | Ensure export is preserved |
+| `src/lib/components/layout/Sidebar.svelte` | Jobs button | Re-add Jobs NavItem if lost |
+| `backend/open_webui/main.py` | Aiden router import | Ensure `from .routers import aiden` preserved |
+| `package.json` | `realtime-ai` dependency | Ensure RTVI deps preserved |
+
+### Post-Merge Verification
+
+```bash
+# 1. Check critical files exist
+ls -la src/lib/apis/jobs/
+ls -la src/lib/components/jobs/
+ls -la backend/open_webui/routers/aiden.py
+
+# 2. Verify customizations
+grep -n "AIDEN_API_BASE_URL" src/lib/constants.ts
+grep -n "jobs" src/lib/components/layout/Sidebar.svelte
+grep -n "aiden" backend/open_webui/main.py
+
+# 3. Test the build
+npm run build
+
+# 4. Test Docker build
+docker build -t pelian-open-webui:test .
+```
+
+### Rollback if Something Breaks
+
+```bash
+# Find backup branch
+git branch | grep backup/
+
+# Hard reset to backup
+git reset --hard backup/pre-sync-YYYYMMDD
+
+# Or restore specific files
+git checkout backup/pre-sync-YYYYMMDD -- src/lib/constants.ts
 ```
 
 ---

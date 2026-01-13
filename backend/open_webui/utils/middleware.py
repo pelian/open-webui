@@ -1328,6 +1328,26 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                         *form_data.get("files", []),
                     ]
 
+        # Job context injection (AIP-19: Jobs integration)
+        # If chat has job_id in meta, inject job context into system prompt
+        log.info(f"[JOB_CONTEXT] chat_id={chat_id}, chat exists={chat is not None}, meta={chat.meta if chat else None}")
+        if chat and chat.meta and chat.meta.get("job_id"):
+            job_name = chat.meta.get("job_name", "Unnamed Job")
+            job_goal = chat.meta.get("job_goal", "")
+
+            job_context = f"""You are working on the following job:
+**Job:** {job_name}
+**Goal:** {job_goal}
+
+Keep this job context in mind for all your responses. Focus on completing this job successfully.
+
+---
+
+"""
+            form_data = apply_system_prompt_to_body(
+                job_context, form_data, metadata, user, replace=False
+            )
+
     # Model "Knowledge" handling
     user_message = get_last_user_message(form_data["messages"])
     model_knowledge = model.get("info", {}).get("meta", {}).get("knowledge", False)

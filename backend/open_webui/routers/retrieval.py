@@ -74,6 +74,7 @@ from open_webui.retrieval.web.perplexity import search_perplexity
 from open_webui.retrieval.web.sougou import search_sougou
 from open_webui.retrieval.web.firecrawl import search_firecrawl
 from open_webui.retrieval.web.external import search_external
+from open_webui.retrieval.web.vaticore import search_vaticore
 
 from open_webui.retrieval.utils import (
     get_content_from_url,
@@ -2098,6 +2099,16 @@ def search_web(
             request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
             user=user,
         )
+    elif engine == "vaticore":
+        if request.app.state.config.VATICORE_URL:
+            return search_vaticore(
+                request.app.state.config.VATICORE_URL,
+                query,
+                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
+                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
+            )
+        else:
+            raise Exception("No VATICORE_URL found in environment variables")
     else:
         raise Exception("No search engine API key found in environment variables")
 

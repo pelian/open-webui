@@ -248,7 +248,14 @@
 				($config?.default_models ? $config.default_models.split(',') : ['']);
 
 			// Create a new chat associated with this job
-			const chatId = crypto.randomUUID();
+			// Include job context in meta for system prompt injection
+			// Use crypto.randomUUID() if available, fallback for HTTP contexts
+			const chatId = typeof crypto.randomUUID === 'function'
+				? crypto.randomUUID()
+				: 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+					const r = Math.random() * 16 | 0;
+					return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+				});
 			const chat = await createNewChat(
 				localStorage.token,
 				{
@@ -261,7 +268,13 @@
 					},
 					messages: [],
 					tags: [],
-					timestamp: Date.now()
+					timestamp: Date.now(),
+					// Store job context in chat meta for system prompt injection
+					meta: {
+						job_id: jobId,
+						job_name: job.name,
+						job_goal: job.summary || job.name
+					}
 				},
 				null, // No folder
 				jobId // Associate with this job

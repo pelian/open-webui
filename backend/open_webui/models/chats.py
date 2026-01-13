@@ -124,6 +124,7 @@ class ChatFileModel(BaseModel):
 class ChatForm(BaseModel):
     chat: dict
     folder_id: Optional[str] = None
+    job_id: Optional[str] = None  # AIP-19: Jobs integration
 
 
 class ChatImportForm(ChatForm):
@@ -240,7 +241,32 @@ class ChatTable:
 
     def insert_new_chat(self, user_id: str, form_data: ChatForm) -> Optional[ChatModel]:
         with get_db() as db:
-            id = str(uuid.uuid4())
+            # AIP-19: Check if a chat ID was provided and already exists
+            # This handles the case where a job-linked chat was pre-created
+            provided_id = form_data.chat.get("id")
+            if provided_id:
+                existing_chat = db.query(Chat).filter(
+                    Chat.id == provided_id,
+                    Chat.user_id == user_id
+                ).first()
+                if existing_chat:
+                    # Chat already exists - update it with the new data
+                    # Preserve the existing meta (contains job context)
+                    existing_chat.chat = self._clean_null_bytes(form_data.chat)
+                    existing_chat.title = self._clean_null_bytes(
+                        form_data.chat["title"]
+                        if "title" in form_data.chat
+                        else existing_chat.title
+                    )
+                    existing_chat.updated_at = int(time.time())
+                    db.commit()
+                    db.refresh(existing_chat)
+                    return ChatModel.model_validate(existing_chat)
+
+            # No existing chat found - create new one
+            id = provided_id or str(uuid.uuid4())
+            # Extract meta from chat object if present (AIP-19: Jobs integration)
+            chat_meta = form_data.chat.get("meta", {})
             chat = ChatModel(
                 **{
                     "id": id,
@@ -251,6 +277,7 @@ class ChatTable:
                         else "New Chat"
                     ),
                     "chat": self._clean_null_bytes(form_data.chat),
+                    "meta": chat_meta,  # Store meta for job context injection
                     "folder_id": form_data.folder_id,
                     "created_at": int(time.time()),
                     "updated_at": int(time.time()),
