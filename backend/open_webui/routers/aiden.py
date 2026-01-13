@@ -133,6 +133,36 @@ async def resume_job(request: Request, job_id: str, user=Depends(get_current_use
     return await proxy_request(request, f"jobs/{job_id}/resume", "POST", user)
 
 
+@router.post("/jobs/{job_id}/archive")
+async def archive_job(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Archive a job (move to backburner)."""
+    return await proxy_request(request, f"jobs/{job_id}/archive", "POST", user)
+
+
+@router.post("/jobs/{job_id}/unarchive")
+async def unarchive_job(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Unarchive a job (restore from backburner)."""
+    return await proxy_request(request, f"jobs/{job_id}/unarchive", "POST", user)
+
+
+@router.post("/jobs/{job_id}/trash")
+async def trash_job(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Move a job to trash (soft delete)."""
+    return await proxy_request(request, f"jobs/{job_id}/trash", "POST", user)
+
+
+@router.post("/jobs/{job_id}/restore")
+async def restore_job_from_trash(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Restore a job from trash."""
+    return await proxy_request(request, f"jobs/{job_id}/restore", "POST", user)
+
+
+@router.delete("/jobs/{job_id}/permanent")
+async def permanent_delete_job(request: Request, job_id: str, user=Depends(get_current_user)):
+    """Permanently delete a job."""
+    return await proxy_request(request, f"jobs/{job_id}/permanent", "DELETE", user)
+
+
 # ============================================================================
 # Conversation-Job Binding
 # ============================================================================
