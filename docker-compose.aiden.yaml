@@ -35,8 +35,10 @@ services:
       - "DO_NOT_TRACK=true"
       - "ANONYMIZED_TELEMETRY=false"
       # Vaticore/World Knowledge web search
+      - "ENABLE_WEB_SEARCH=true"
       - "WEB_SEARCH_ENGINE=vaticore"
       - "VATICORE_URL=${VATICORE_URL:-http://host.docker.internal:8010}"
+      - "WEB_SEARCH_RESULT_COUNT=5"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
